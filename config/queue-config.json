@@ -1,0 +1,21 @@
+{
+  "queues": [
+    {
+      "flag": "test_queue",
+      "queueUrl": "https://sqs.us-east-1.amazonaws.com/381492122108/aws-helper-test-queue",
+      "dlqUrl": "https://sqs.us-east-1.amazonaws.com/381492122108/aws-helper-test-queue-dlq",
+      "defaultDelaySeconds": 0
+    },
+    {
+      "flag": "email_notifications", 
+      "queueUrl": "https://sqs.us-east-1.amazonaws.com/381492122108/email-notifications",
+      "dlqUrl": "https://sqs.us-east-1.amazonaws.com/381492122108/email-notifications-dlq",
+      "defaultDelaySeconds": 0
+    },
+    {
+      "flag": "processing_queue",
+      "queueUrl": "https://sqs.us-east-1.amazonaws.com/381492122108/processing-queue",
+      "defaultDelaySeconds": 5
+    }
+  ]
+}

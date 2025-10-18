@@ -1,0 +1,24 @@
+{
+  "name": "aws-helper",
+  "version": "1.0.0",
+  "description": "AWS Helper for Node.js",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test:s3": "node test/s3-test.js",
+    "test:sqs": "node test/sqs-test.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-eventbridge": "^3.911.0",
+    "@aws-sdk/client-ivs": "^3.911.0",
+    "@aws-sdk/client-s3": "^3.911.0",
+    "@aws-sdk/client-secrets-manager": "^3.911.0",
+    "@aws-sdk/client-sqs": "^3.911.0",
+    "@aws-sdk/credential-providers": "^3.911.0",
+    "@aws-sdk/s3-request-presigner": "^3.911.0",
+    "dotenv": "^17.2.3",
+    "install": "^0.13.0",
+    "luxon": "^3.7.2",
+    "moment": "^2.30.1"
+  }
+}
