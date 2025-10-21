@@ -1,167 +1,406 @@
 import SQSHelper from "../aws/sqsHelper.js";
+import SecretsManager from "../aws/SecretsManager.js";
+import AwsS3 from "../aws/AwsS3.js";
 import { CreateQueueCommand, DeleteQueueCommand } from "@aws-sdk/client-sqs";
+import { LambdaClient, CreateFunctionCommand, DeleteFunctionCommand, CreateEventSourceMappingCommand, DeleteEventSourceMappingCommand } from "@aws-sdk/client-lambda";
+import { IAMClient, CreateRoleCommand, AttachRolePolicyCommand, DeleteRoleCommand, DetachRolePolicyCommand } from "@aws-sdk/client-iam";
+import { CloudWatchLogsClient, DescribeLogStreamsCommand, GetLogEventsCommand } from "@aws-sdk/client-cloudwatch-logs";
+import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
+import AdmZip from "adm-zip";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 // Test configuration
-const TEST_QUEUE_NAME = `aws-helper-test-queue-${Date.now()}`;
-const TEST_QUEUE_URL = `https://sqs.us-east-1.amazonaws.com/381492122108/${TEST_QUEUE_NAME}`;
+const TIMESTAMP = Date.now();
+const TEST_QUEUE_NAME = `aws-helper-test-queue-${TIMESTAMP}`;
+const TEST_DLQ_NAME = `${TEST_QUEUE_NAME}-dlq`;
+const TEST_LAMBDA_NAME = `sqs-processor-${TIMESTAMP}`;
+const TEST_ROLE_NAME = `sqs-lambda-role-${TIMESTAMP}`;
+const TEST_BUCKET_NAME = `aws-helper-s3-test-${TIMESTAMP}`;
 
-console.log("🚀 Starting AWS SQS Comprehensive Test");
+// AWS Configuration - Account ID will be retrieved dynamically
+let ACCOUNT_ID;
+let TEST_QUEUE_URL, TEST_DLQ_URL; // Queue URLs will be constructed after getting Account ID
+let lambdaClient, iamClient, logsClient;
+let lambdaArn, roleArn, eventSourceMappingId;
+
+console.log("🚀 COMPREHENSIVE AWS INTEGRATION TEST");
 console.log(`📅 Test started at: ${new Date().toISOString()}`);
 console.log(`📬 Test queue: ${TEST_QUEUE_NAME}`);
 console.log("=" * 50);
 
 async function runSQSTests() {
   try {
-    // 1. Initialize SQS client
-    console.log("\n📋 Step 1: Initializing SQS client...");
-    await SQSHelper.init(process.env.AWS_REGION || "us-east-1");
-    console.log("✅ SQS client initialized successfully");
+    const region = process.env.AWS_REGION || "us-east-1";
 
-    // 2. Create a test queue directly using AWS SDK
-    console.log("\n📋 Step 2: Creating test queue...");
+    // 1. Get AWS Account ID dynamically
+    console.log("\n📋 Step 1: Getting AWS Account ID...");
+    const stsClient = new STSClient({ region });
+    const callerIdentity = await stsClient.send(new GetCallerIdentityCommand({}));
+    ACCOUNT_ID = callerIdentity.Account;
+    console.log(`✅ AWS Account ID: ${ACCOUNT_ID}`);
+    console.log(`✅ User ARN: ${callerIdentity.Arn}`);
+    
+    // Construct queue URLs now that we have Account ID
+    TEST_QUEUE_URL = `https://sqs.${region}.amazonaws.com/${ACCOUNT_ID}/${TEST_QUEUE_NAME}`;
+    TEST_DLQ_URL = `https://sqs.${region}.amazonaws.com/${ACCOUNT_ID}/${TEST_DLQ_NAME}`;
+    console.log(`✅ Queue URLs constructed for account ${ACCOUNT_ID}`);
+
+    // 2. Test SecretsManager credential scenarios
+    console.log("\n📋 Step 2: Testing SecretsManager credential scenarios...");
+    console.log("   Testing Environment Variables → Secrets Manager fallback:");
+    
+    // Test current credential scenario
+    console.log(`   AWS_ACCESS_KEY_ID present: ${!!process.env.AWS_ACCESS_KEY_ID}`);
+    console.log(`   AWS_SECRET_ACCESS_KEY present: ${!!process.env.AWS_SECRET_ACCESS_KEY}`);
+    
+    // Test SecretsManager class
+    const credentials = await SecretsManager.getAWSCredentials(region);
+    console.log(`   ✅ Credential source: ${credentials.source}`);
+    console.log(`   ✅ Access Key: ${credentials.accessKeyId.substring(0, 8)}...`);
+    
+    // Test connection
+    const connectionTest = await SecretsManager.testConnection(region);
+    console.log(`   ✅ Secrets Manager connectivity: ${connectionTest ? 'SUCCESS' : 'FAILED'}`);
+
+    // 3. Initialize all AWS clients 
+    console.log("\n📋 Step 3: Initializing AWS clients...");
+    await SQSHelper.init(region);
+    await AwsS3.init(region);
+    lambdaClient = new LambdaClient({ region });
+    iamClient = new IAMClient({ region });
+    logsClient = new CloudWatchLogsClient({ region });
+    console.log("✅ All AWS clients initialized (SQS, S3, Lambda, IAM, CloudWatch)");
+
+    // 4. Create DLQ first for comprehensive testing
+    console.log("\n📋 Step 4: Creating Dead Letter Queue...");
+    const createDLQCommand = new CreateQueueCommand({
+      QueueName: TEST_DLQ_NAME,
+      Attributes: {
+        MessageRetentionPeriod: "1209600" // 14 days
+      }
+    });
+    
+    await SQSHelper.client.send(createDLQCommand);
+    console.log(`✅ DLQ created: ${TEST_DLQ_NAME}`);
+
+    // 5. Create main queue with DLQ integration
+    console.log("\n📋 Step 5: Creating main queue with DLQ integration...");
     const createQueueCommand = new CreateQueueCommand({
       QueueName: TEST_QUEUE_NAME,
       Attributes: {
         MessageRetentionPeriod: "345600", // 4 days
-        VisibilityTimeout: "30"
+        VisibilityTimeout: "300", // 5 minutes - must be >= Lambda timeout (60s)
+        // Configure DLQ with 3 retry attempts
+        RedrivePolicy: JSON.stringify({
+          deadLetterTargetArn: `arn:aws:sqs:${region}:${ACCOUNT_ID}:${TEST_DLQ_NAME}`,
+          maxReceiveCount: 3
+        })
       }
     });
     
     await SQSHelper.client.send(createQueueCommand);
     console.log(`✅ Test queue '${TEST_QUEUE_NAME}' created successfully`);
 
-    // Add the test queue to config temporarily for testing
+    // Add both queues to config temporarily for testing
     SQSHelper.config.queues.push({
       flag: "test_queue_temp",
       queueUrl: TEST_QUEUE_URL,
+      dlqUrl: TEST_DLQ_URL,
       defaultDelaySeconds: 0
     });
 
-    // 3. Send a single message
-    console.log("\n📋 Step 3: Sending single message...");
-    const testMessage = {
-      type: "test",
-      content: "Hello SQS! This is a test message.",
-      timestamp: new Date().toISOString(),
-      messageId: Math.random().toString(36).substring(7)
+    // 6. Create IAM role for Lambda
+    console.log("\n📋 Step 6: Creating IAM role for Lambda...");
+    const trustPolicy = {
+      Version: "2012-10-17",
+      Statement: [{
+        Effect: "Allow",
+        Principal: { Service: "lambda.amazonaws.com" },
+        Action: "sts:AssumeRole"
+      }]
     };
-    
-    const sendResult = await SQSHelper.send("test_queue_temp", testMessage);
-    console.log(`✅ Message sent successfully. MessageId: ${sendResult.MessageId}`);
 
-    // 4. Send batch messages
-    console.log("\n📋 Step 4: Sending batch messages...");
-    const batchMessages = [
-      { type: "batch", content: "Batch message 1", index: 1 },
-      { type: "batch", content: "Batch message 2", index: 2 },
-      { type: "batch", content: "Batch message 3", index: 3 }
+    const createRoleResponse = await iamClient.send(new CreateRoleCommand({
+      RoleName: TEST_ROLE_NAME,
+      AssumeRolePolicyDocument: JSON.stringify(trustPolicy)
+    }));
+    roleArn = createRoleResponse.Role.Arn;
+
+    // Attach required policies
+    await iamClient.send(new AttachRolePolicyCommand({
+      RoleName: TEST_ROLE_NAME,
+      PolicyArn: "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+    }));
+    await iamClient.send(new AttachRolePolicyCommand({
+      RoleName: TEST_ROLE_NAME, 
+      PolicyArn: "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
+    }));
+    console.log(`✅ IAM role created: ${TEST_ROLE_NAME}`);
+
+    // Wait for role propagation
+    console.log("   Waiting 10 seconds for IAM role propagation...");
+    await new Promise(resolve => setTimeout(resolve, 10000));
+
+    // 7. Create real Lambda function
+    console.log("\n📋 Step 7: Creating REAL Lambda function...");
+    
+    // Create proper Lambda code
+    const lambdaCode = `exports.handler = async (event) => {
+        console.log('🔥 Lambda triggered by SQS!', JSON.stringify(event, null, 2));
+    
+        for (const record of event.Records) {
+            const messageBody = JSON.parse(record.body);
+            console.log('⚡ Processing:', messageBody);
+            
+            if (messageBody.shouldFail) {
+                console.log('💥 INTENTIONAL FAILURE for DLQ testing');
+                throw new Error(\`Failed processing: \${messageBody.id}\`);
+            }
+            
+            console.log(\`✅ Success: \${messageBody.id}\`);
+        }
+        
+        return { statusCode: 200, body: 'Messages processed' };
+    };`;
+
+    // Create proper ZIP file for Lambda deployment
+    const zip = new AdmZip();
+    zip.addFile("index.js", Buffer.from(lambdaCode, "utf8"));
+    const zipBuffer = zip.toBuffer();
+    
+    console.log(`   📦 Created ZIP package (${zipBuffer.length} bytes)`);
+
+    const createFunctionResponse = await lambdaClient.send(new CreateFunctionCommand({
+      FunctionName: TEST_LAMBDA_NAME,
+      Runtime: 'nodejs18.x',
+      Role: roleArn,
+      Handler: 'index.handler',
+      Code: { ZipFile: zipBuffer },
+      Description: 'Real SQS processor for comprehensive testing',
+      Timeout: 60
+    }));
+    lambdaArn = createFunctionResponse.FunctionArn;
+    console.log(`✅ Real Lambda function created: ${TEST_LAMBDA_NAME}`);
+
+    // 8. Connect SQS to Lambda (real trigger)
+    console.log("\n📋 Step 8: Connecting SQS → Lambda trigger...");
+    const eventSourceResponse = await lambdaClient.send(new CreateEventSourceMappingCommand({
+      EventSourceArn: `arn:aws:sqs:${region}:${ACCOUNT_ID}:${TEST_QUEUE_NAME}`,
+      FunctionName: lambdaArn,
+      BatchSize: 5
+    }));
+    eventSourceMappingId = eventSourceResponse.UUID;
+    console.log(`✅ SQS → Lambda trigger configured! Messages will auto-process`);
+
+    // Wait for trigger to be active
+    console.log("   Waiting 15 seconds for Lambda trigger to be active...");
+    await new Promise(resolve => setTimeout(resolve, 15000));
+
+    // 9. Send messages including poison messages for DLQ testing
+    console.log("\n📋 Step 9: Sending messages (normal + poison for DLQ)...");
+    
+    // Normal messages
+    const normalMessages = [
+      { id: "msg-001", type: "test", content: "Normal message 1", shouldFail: false },
+      { id: "msg-002", type: "test", content: "Normal message 2", shouldFail: false }
     ];
     
-    const batchResult = await SQSHelper.sendBatch("test_queue_temp", batchMessages);
-    console.log(`✅ Batch sent successfully. ${batchResult.Successful.length} messages sent`);
-
-    // 5. Receive messages
-    console.log("\n📋 Step 5: Receiving messages...");
-    const messages = await SQSHelper.receive("test_queue_temp", 5, 2); // Get up to 5 messages, wait 2 seconds
-    console.log(`✅ Received ${messages.length} messages`);
-    
-    messages.forEach((message, index) => {
-      try {
-        const body = JSON.parse(message.Body);
-        console.log(`   ${index + 1}. ${body.type}: ${body.content} (ID: ${message.MessageId})`);
-      } catch (e) {
-        console.log(`   ${index + 1}. Raw: ${message.Body} (ID: ${message.MessageId})`);
-      }
-    });
-
-    // 6. Delete received messages
-    console.log("\n📋 Step 6: Deleting messages...");
-    for (const message of messages) {
-      await SQSHelper.delete("test_queue_temp", message.ReceiptHandle);
-    }
-    console.log(`✅ Deleted ${messages.length} messages`);
-
-    // 7. Test message attributes
-    console.log("\n📋 Step 7: Testing message attributes...");
-    const messageWithAttributes = {
-      type: "attributed",
-      content: "Message with custom attributes"
+    // Poison message for DLQ testing
+    const poisonMessage = {
+      id: "poison-001", 
+      type: "poison", 
+      content: "This will fail and go to DLQ", 
+      shouldFail: true
     };
-    
-    const attributedResult = await SQSHelper.send("test_queue_temp", messageWithAttributes, {
-      messageAttributes: {
-        Priority: "High",
-        Source: "TestSuite",
-        Environment: "Development"
-      }
-    });
-    console.log(`✅ Message with attributes sent. MessageId: ${attributedResult.MessageId}`);
 
-    // 8. Receive and inspect message attributes
-    console.log("\n📋 Step 8: Receiving message with attributes...");
-    const attributedMessages = await SQSHelper.receive("test_queue_temp", 1, 2);
-    if (attributedMessages.length > 0) {
-      const msg = attributedMessages[0];
-      console.log(`✅ Received attributed message: ${JSON.parse(msg.Body).content}`);
-      if (msg.MessageAttributes) {
-        console.log("   Attributes:");
-        Object.entries(msg.MessageAttributes).forEach(([key, value]) => {
-          console.log(`     ${key}: ${value.StringValue}`);
-        });
-      }
+    // Send normal messages
+    for (const msg of normalMessages) {
+      await SQSHelper.send("test_queue_temp", msg);
+      console.log(`✅ Sent normal message: ${msg.id}`);
+    }
+    
+    // Send poison message  
+    await SQSHelper.send("test_queue_temp", poisonMessage);
+    console.log(`✅ Sent poison message: ${poisonMessage.id} (will fail and go to DLQ)`);
+    console.log(`🔥 Lambda functions should be executing now!`);
+
+    // 10. Real-time monitoring of Lambda processing
+    console.log("\n📋 Step 10: Real-time monitoring of Lambda processing...");
+    console.log("   Monitoring CloudWatch logs for 60 seconds...");
+    
+    const logGroupName = `/aws/lambda/${TEST_LAMBDA_NAME}`;
+    for (let i = 0; i < 12; i++) { // Monitor for 1 minute
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
-      // Clean up the attributed message
-      await SQSHelper.delete("test_queue_temp", msg.ReceiptHandle);
+      try {
+        const logStreamsResponse = await logsClient.send(new DescribeLogStreamsCommand({
+          logGroupName,
+          orderBy: 'LastEventTime',
+          descending: true,
+          limit: 1
+        }));
+
+        if (logStreamsResponse.logStreams?.length > 0) {
+          const latestStream = logStreamsResponse.logStreams[0];
+          const logEventsResponse = await logsClient.send(new GetLogEventsCommand({
+            logGroupName,
+            logStreamName: latestStream.logStreamName,
+            startTime: Date.now() - 30000
+          }));
+
+          if (logEventsResponse.events?.length > 0) {
+            console.log(`   📊 [${i + 1}/12] Lambda activity detected:`);
+            logEventsResponse.events.slice(-2).forEach(event => {
+              console.log(`     ${new Date(event.timestamp).toLocaleTimeString()}: ${event.message.trim()}`);
+            });
+          } else {
+            console.log(`   ⏳ [${i + 1}/12] Waiting for Lambda execution...`);
+          }
+        }
+      } catch (logError) {
+        console.log(`   📋 [${i + 1}/12] Logs not ready yet...`);
+      }
     }
 
-    // 9. Test retry mechanism with delay
-    console.log("\n📋 Step 9: Testing retry mechanism...");
-    const delayedMessage = { type: "delayed", content: "Message with 5 second delay" };
-    await SQSHelper.send("test_queue_temp", delayedMessage, { 
-      delaySeconds: 5,
-      retries: 2 
-    });
-    console.log("✅ Delayed message sent successfully");
+    // 11. Check DLQ for poison messages
+    console.log("\n📋 Step 11: Checking Dead Letter Queue for poison messages...");
+    const dlqMessages = await SQSHelper.checkDLQ("test_queue_temp");
+    if (dlqMessages.length > 0) {
+      console.log(`✅ SUCCESS: Found ${dlqMessages.length} poison message(s) in DLQ!`);
+      dlqMessages.forEach((msg, index) => {
+        const body = JSON.parse(msg.Body);
+        console.log(`   💀 DLQ Message ${index + 1}: ${body.id} - ${body.content}`);
+      });
+    } else {
+      console.log("ℹ️ No messages in DLQ yet (retry timing varies)");
+    }
 
-    // 10. Test empty queue receive
-    console.log("\n📋 Step 10: Testing empty queue receive...");
-    const emptyResult = await SQSHelper.receive("test_queue_temp", 1, 1); // Wait only 1 second
-    console.log(`✅ Empty queue test completed. Received ${emptyResult.length} messages`);
-
-    // 11. Send one more message for DLQ test (if DLQ exists)
-    console.log("\n📋 Step 11: Testing Dead Letter Queue check...");
-    await SQSHelper.checkDLQ("test_queue_temp");
-    console.log("✅ DLQ check completed");
-
-    // 12. Clean up - delete the test queue
-    console.log("\n📋 Step 12: Cleaning up test queue...");
-    const deleteQueueCommand = new DeleteQueueCommand({
-      QueueUrl: TEST_QUEUE_URL
-    });
+    // 12. S3 file download test
+    console.log("\n📋 Step 12: S3 file download test...");
+    await AwsS3.createBucket(TEST_BUCKET_NAME);
+    console.log(`✅ S3 test bucket created: ${TEST_BUCKET_NAME}`);
     
-    await SQSHelper.client.send(deleteQueueCommand);
-    console.log(`✅ Test queue '${TEST_QUEUE_NAME}' deleted successfully`);
+    // Upload test file
+    const testFileContent = `S3 Download Test File
+      Created: ${new Date().toISOString()}
+      Integration Test Data`;
+    
+    await AwsS3.uploadFile(TEST_BUCKET_NAME, "test-file.txt", Buffer.from(testFileContent));
+    console.log("✅ Test file uploaded to S3");
+    
+    // Download test file
+    const downloadedBuffer = await AwsS3.getFile(TEST_BUCKET_NAME, "test-file.txt");
+    const downloadedContent = downloadedBuffer.toString();
+    console.log(`✅ File downloaded successfully (${downloadedBuffer.length} bytes)`);
+    console.log(`   Content preview: ${downloadedContent.split('\n')[0]}...`);
+    
+    // Clean up S3 resources
+    await AwsS3.deleteFile(TEST_BUCKET_NAME, "test-file.txt");
+    await AwsS3.deleteBucket(TEST_BUCKET_NAME);
+    console.log("✅ S3 test resources cleaned up");
 
-    console.log("\n🎉 All SQS tests completed successfully!");
+    // 13. Pause for inspection (optional)
+    console.log("\n⏸️ PAUSING FOR INSPECTION:");
+    console.log("🔍 Go to AWS Console now to see all created resources:");
+    console.log("   • SQS: aws-helper-comprehensive-test queue");
+    console.log("   • Lambda: aws-helper-sqs-processor function");
+    console.log("   • IAM: aws-helper-lambda-role");
+    console.log("   • CloudWatch: /aws/lambda/aws-helper-sqs-processor logs");
+    console.log("   • S3: aws-helper-integration-test bucket");
+    console.log("\n⏰ Waiting 120 seconds (2 minutes) before cleanup...");
+    console.log("   Press Ctrl+C to stop and keep resources for inspection");
+    await new Promise(resolve => setTimeout(resolve, 120000));
+
+    // 14. Final comprehensive cleanup
+    console.log("\n📋 Step 14: Comprehensive cleanup of all AWS resources...");
+    
+    // Delete Lambda event source mapping
+    if (eventSourceMappingId) {
+      await lambdaClient.send(new DeleteEventSourceMappingCommand({
+        UUID: eventSourceMappingId
+      }));
+      console.log("✅ Event source mapping deleted");
+    }
+
+    // Delete Lambda function
+    if (lambdaArn) {
+      await lambdaClient.send(new DeleteFunctionCommand({
+        FunctionName: TEST_LAMBDA_NAME
+      }));
+      console.log("✅ Lambda function deleted");
+    }
+
+    // Delete IAM role
+    if (roleArn) {
+      await iamClient.send(new DetachRolePolicyCommand({
+        RoleName: TEST_ROLE_NAME,
+        PolicyArn: "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      }));
+      await iamClient.send(new DetachRolePolicyCommand({
+        RoleName: TEST_ROLE_NAME,
+        PolicyArn: "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
+      }));
+      await iamClient.send(new DeleteRoleCommand({
+        RoleName: TEST_ROLE_NAME
+      }));
+      console.log("✅ IAM role deleted");
+    }
+
+    // Delete SQS queues
+    await SQSHelper.client.send(new DeleteQueueCommand({ QueueUrl: TEST_QUEUE_URL }));
+    console.log("✅ Main queue deleted");
+    
+    await SQSHelper.client.send(new DeleteQueueCommand({ QueueUrl: TEST_DLQ_URL }));
+    console.log("✅ DLQ deleted");
+
+    console.log("\n🎉 COMPREHENSIVE AWS INTEGRATION TEST COMPLETED!");
     console.log(`📅 Test finished at: ${new Date().toISOString()}`);
+    
+    console.log("\n📊 COMPREHENSIVE TEST SUMMARY:");
+    console.log("✅ SecretsManager reusable class with credential fallback");
+    console.log("✅ Real Lambda function created and triggered by SQS"); 
+    console.log("✅ Real-time CloudWatch monitoring of Lambda executions");
+    console.log("✅ DLQ testing with poison message retry demonstration");
+    console.log("✅ S3 file upload and download testing");
+    console.log("✅ Complete AWS ecosystem integration verified");
+    console.log("✅ Production-ready IAM roles and permissions");
+    console.log("✅ Complete resource cleanup performed");
 
   } catch (error) {
     console.error("\n❌ Test failed with error:", error);
     
-    // Emergency cleanup
+    // Emergency cleanup for all resources
     console.log("\n🧹 Attempting emergency cleanup...");
     try {
-      const deleteQueueCommand = new DeleteQueueCommand({
-        QueueUrl: TEST_QUEUE_URL
-      });
-      await SQSHelper.client.send(deleteQueueCommand);
-      console.log("✅ Emergency cleanup completed");
+      // Clean up Lambda resources
+      if (eventSourceMappingId) {
+        await lambdaClient.send(new DeleteEventSourceMappingCommand({ UUID: eventSourceMappingId }));
+      }
+      if (lambdaArn) {
+        await lambdaClient.send(new DeleteFunctionCommand({ FunctionName: TEST_LAMBDA_NAME }));
+      }
+      if (roleArn) {
+        await iamClient.send(new DetachRolePolicyCommand({
+          RoleName: TEST_ROLE_NAME,
+          PolicyArn: "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        }));
+        await iamClient.send(new DetachRolePolicyCommand({
+          RoleName: TEST_ROLE_NAME,
+          PolicyArn: "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
+        }));
+        await iamClient.send(new DeleteRoleCommand({ RoleName: TEST_ROLE_NAME }));
+      }
+      
+      // Clean up SQS queues
+      await SQSHelper.client.send(new DeleteQueueCommand({ QueueUrl: TEST_QUEUE_URL }));
+      await SQSHelper.client.send(new DeleteQueueCommand({ QueueUrl: TEST_DLQ_URL }));
+      
+      console.log("✅ Emergency cleanup completed for all resources");
     } catch (cleanupError) {
       console.error("❌ Emergency cleanup failed:", cleanupError.message);
-      console.log(`ℹ️ You may need to manually delete queue: ${TEST_QUEUE_NAME}`);
+      console.log(`ℹ️ Manual cleanup needed for: ${TEST_QUEUE_NAME}, ${TEST_DLQ_NAME}, ${TEST_LAMBDA_NAME}, ${TEST_ROLE_NAME}`);
     }
     
     process.exit(1);

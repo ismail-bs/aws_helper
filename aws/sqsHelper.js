@@ -6,7 +6,7 @@ import {
   ReceiveMessageCommand,
   DeleteMessageCommand,
 } from "@aws-sdk/client-sqs";
-import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
+import SecretsManager from "./SecretsManager.js";
 import { SafeUtils, ErrorHandler, Logger, DateTime } from "../utils/index.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -42,32 +42,9 @@ class SQSHelper {
 
   static client = null;
 
-  // Get credentials with env fallback to secrets manager
+  // Get credentials using the reusable SecretsManager class
   static async getCredentials(region) {
-    // First try environment variables
-    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-      return {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      };
-    }
-
-    // Fallback to secrets manager if no env vars found
-    try {
-      const secretsClient = new SecretsManagerClient({ region });
-      const secretName = process.env.SECRETS_MANAGER_SECRET_NAME || "aws-helper-secrets";
-      
-      const command = new GetSecretValueCommand({ SecretId: secretName });
-      const response = await secretsClient.send(command);
-      const secrets = JSON.parse(response.SecretString);
-      
-      return {
-        accessKeyId: secrets.AWS_ACCESS_KEY_ID,
-        secretAccessKey: secrets.AWS_SECRET_ACCESS_KEY,
-      };
-    } catch (error) {
-      throw new Error(`Failed to get AWS credentials: ${error.message}`);
-    }
+    return await SecretsManager.getAWSCredentials(region);
   }
 
   static async init(region) {
