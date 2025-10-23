@@ -1,6 +1,9 @@
 import fs from "fs";
 import {
   SQSClient,
+  CreateQueueCommand,
+  DeleteQueueCommand,
+  GetQueueUrlCommand,
   SendMessageCommand,
   SendMessageBatchCommand,
   ReceiveMessageCommand,
@@ -92,6 +95,180 @@ class SQSHelper {
           2
         )
       );
+    }
+  }
+
+  /**
+   * Create a new SQS queue
+   * @param {string} queueName - Name of the queue to create
+   * @param {Object} attributes - Queue attributes (optional)
+   * @returns {Promise<string>} Queue URL
+   */
+  static async createQueue(queueName, attributes = {}) {
+    try {
+      ({ queueName } = SafeUtils.sanitizeValidate({
+        queueName: { value: queueName, type: "string", required: true },
+      }));
+    } catch (err) {
+      ErrorHandler.add_error("Invalid parameters in SQSHelper.createQueue", {
+        queueName,
+        error: err.message,
+      });
+      Logger.writeLog({
+        flag: "sqs_error",
+        action: "createQueue",
+        message: err.message,
+        critical: true,
+        data: { queueName },
+      });
+      throw new Error(err.message);
+    }
+
+    try {
+      const command = new CreateQueueCommand({
+        QueueName: queueName,
+        Attributes: {
+          VisibilityTimeout: "30",
+          MessageRetentionPeriod: "345600", // 4 days
+          ...attributes
+        }
+      });
+      
+      const response = await this.client.send(command);
+      
+      Logger.writeLog({
+        flag: "sqs_operations",
+        action: "createQueue",
+        message: "Queue created successfully",
+        data: { queueName, queueUrl: response.QueueUrl }
+      });
+      
+      return response.QueueUrl;
+    } catch (err) {
+      ErrorHandler.add_error("Failed to create queue", {
+        queueName,
+        error: err.message,
+      });
+      Logger.writeLog({
+        flag: "sqs_error",
+        action: "createQueue",
+        message: err.message,
+        critical: true,
+        data: { queueName },
+      });
+      throw err;
+    }
+  }
+
+  /**
+   * Delete an SQS queue
+   * @param {string} queueUrl - URL of the queue to delete
+   * @returns {Promise<boolean>} True if successful
+   */
+  static async deleteQueue(queueUrl) {
+    try {
+      ({ queueUrl } = SafeUtils.sanitizeValidate({
+        queueUrl: { value: queueUrl, type: "url", required: true },
+      }));
+    } catch (err) {
+      ErrorHandler.add_error("Invalid parameters in SQSHelper.deleteQueue", {
+        queueUrl,
+        error: err.message,
+      });
+      Logger.writeLog({
+        flag: "sqs_error",
+        action: "deleteQueue",
+        message: err.message,
+        critical: true,
+        data: { queueUrl },
+      });
+      throw new Error(err.message);
+    }
+
+    try {
+      const command = new DeleteQueueCommand({
+        QueueUrl: queueUrl
+      });
+      
+      await this.client.send(command);
+      
+      Logger.writeLog({
+        flag: "sqs_operations",
+        action: "deleteQueue",
+        message: "Queue deleted successfully",
+        data: { queueUrl }
+      });
+      
+      return true;
+    } catch (err) {
+      ErrorHandler.add_error("Failed to delete queue", {
+        queueUrl,
+        error: err.message,
+      });
+      Logger.writeLog({
+        flag: "sqs_error",
+        action: "deleteQueue",
+        message: err.message,
+        critical: true,
+        data: { queueUrl },
+      });
+      throw err;
+    }
+  }
+
+  /**
+   * Get queue URL by queue name
+   * @param {string} queueName - Name of the queue
+   * @returns {Promise<string>} Queue URL
+   */
+  static async getQueueUrl(queueName) {
+    try {
+      ({ queueName } = SafeUtils.sanitizeValidate({
+        queueName: { value: queueName, type: "string", required: true },
+      }));
+    } catch (err) {
+      ErrorHandler.add_error("Invalid parameters in SQSHelper.getQueueUrl", {
+        queueName,
+        error: err.message,
+      });
+      Logger.writeLog({
+        flag: "sqs_error",
+        action: "getQueueUrl",
+        message: err.message,
+        critical: true,
+        data: { queueName },
+      });
+      throw new Error(err.message);
+    }
+
+    try {
+      const command = new GetQueueUrlCommand({
+        QueueName: queueName
+      });
+      
+      const response = await this.client.send(command);
+      
+      Logger.writeLog({
+        flag: "sqs_operations",
+        action: "getQueueUrl",
+        message: "Queue URL retrieved",
+        data: { queueName, queueUrl: response.QueueUrl }
+      });
+      
+      return response.QueueUrl;
+    } catch (err) {
+      ErrorHandler.add_error("Failed to get queue URL", {
+        queueName,
+        error: err.message,
+      });
+      Logger.writeLog({
+        flag: "sqs_error",
+        action: "getQueueUrl",
+        message: err.message,
+        critical: false,
+        data: { queueName },
+      });
+      return null; // Return null if queue doesn't exist
     }
   }
 
@@ -328,6 +505,185 @@ class SQSHelper {
           });
         }
         return result.Messages || [];
+      },
+      options.retries,
+      options.delayMs
+    );
+  }
+
+  /**
+   * Send message directly to queue URL (bypasses config)
+   * @param {string} queueUrl - Direct queue URL
+   * @param {any} messageBody - Message body
+   * @param {Object} options - Optional parameters
+   * @returns {Promise<Object>} Send result
+   */
+  static async sendToQueue(queueUrl, messageBody, options = {}) {
+    try {
+      ({ queueUrl } = SafeUtils.sanitizeValidate({
+        queueUrl: { value: queueUrl, type: "url", required: true },
+      }));
+    } catch (err) {
+      throw new Error(err.message);
+    }
+
+    const bodyStr = JSON.stringify(messageBody);
+    const params = {
+      QueueUrl: queueUrl,
+      MessageBody: bodyStr,
+      DelaySeconds: options.delaySeconds || 0,
+    };
+
+    if (options.messageAttributes && typeof options.messageAttributes === "object") {
+      params.MessageAttributes = {};
+      for (const [key, val] of Object.entries(options.messageAttributes)) {
+        params.MessageAttributes[key] = {
+          DataType: "String",
+          StringValue: String(val),
+        };
+      }
+    }
+
+    return this.withRetry(
+      async () => {
+        const cmd = new SendMessageCommand(params);
+        const result = await this.client.send(cmd);
+        Logger.writeLog({
+          flag: "sqs_operations",
+          action: "sendToQueue",
+          message: "Message sent successfully",
+          data: { queueUrl, messageId: result.MessageId }
+        });
+        return result;
+      },
+      options.retries,
+      options.delayMs
+    );
+  }
+
+  /**
+   * Send batch of messages directly to queue URL
+   * @param {string} queueUrl - Direct queue URL
+   * @param {Array} messages - Array of messages
+   * @param {Object} options - Optional parameters
+   * @returns {Promise<Object>} Batch send result
+   */
+  static async sendBatchToQueue(queueUrl, messages, options = {}) {
+    try {
+      ({ queueUrl } = SafeUtils.sanitizeValidate({
+        queueUrl: { value: queueUrl, type: "url", required: true },
+      }));
+    } catch (err) {
+      throw new Error(err.message);
+    }
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      throw new Error("Messages must be a non-empty array");
+    }
+
+    const entries = messages.map((msg, idx) => ({
+      Id: String(idx),
+      MessageBody: JSON.stringify(msg),
+      DelaySeconds: options.delaySeconds || 0,
+    }));
+
+    const params = {
+      QueueUrl: queueUrl,
+      Entries: entries,
+    };
+
+    return this.withRetry(
+      async () => {
+        const cmd = new SendMessageBatchCommand(params);
+        const result = await this.client.send(cmd);
+        Logger.writeLog({
+          flag: "sqs_operations",
+          action: "sendBatchToQueue",
+          message: "Batch sent successfully",
+          data: { queueUrl, successCount: result.Successful?.length || 0 }
+        });
+        return result;
+      },
+      options.retries,
+      options.delayMs
+    );
+  }
+
+  /**
+   * Receive messages directly from queue URL
+   * @param {string} queueUrl - Direct queue URL
+   * @param {number} maxMessages - Maximum number of messages (1-10)
+   * @param {number} waitTimeSeconds - Long polling wait time (0-20)
+   * @param {Object} options - Optional parameters
+   * @returns {Promise<Array>} Array of messages
+   */
+  static async receiveFromQueue(queueUrl, maxMessages = 1, waitTimeSeconds = 10, options = {}) {
+    try {
+      ({ queueUrl } = SafeUtils.sanitizeValidate({
+        queueUrl: { value: queueUrl, type: "url", required: true },
+      }));
+    } catch (err) {
+      throw new Error(err.message);
+    }
+
+    const params = {
+      QueueUrl: queueUrl,
+      MaxNumberOfMessages: maxMessages,
+      WaitTimeSeconds: waitTimeSeconds,
+      VisibilityTimeout: SQSHelper.DEFAULT_VISIBILITY_TIMEOUT,
+    };
+
+    return this.withRetry(
+      async () => {
+        const cmd = new ReceiveMessageCommand(params);
+        const result = await this.client.send(cmd);
+        if (result.Messages?.length) {
+          Logger.writeLog({
+            flag: "sqs_operations",
+            action: "receiveFromQueue",
+            message: "Messages received",
+            data: { queueUrl, messageCount: result.Messages.length }
+          });
+        }
+        return result.Messages || [];
+      },
+      options.retries,
+      options.delayMs
+    );
+  }
+
+  /**
+   * Delete message directly from queue URL
+   * @param {string} queueUrl - Direct queue URL
+   * @param {string} receiptHandle - Message receipt handle
+   * @param {Object} options - Optional parameters
+   * @returns {Promise<void>}
+   */
+  static async deleteFromQueue(queueUrl, receiptHandle, options = {}) {
+    try {
+      ({ queueUrl, receiptHandle } = SafeUtils.sanitizeValidate({
+        queueUrl: { value: queueUrl, type: "url", required: true },
+        receiptHandle: { value: receiptHandle, type: "string", required: true },
+      }));
+    } catch (err) {
+      throw new Error(err.message);
+    }
+
+    const params = {
+      QueueUrl: queueUrl,
+      ReceiptHandle: receiptHandle,
+    };
+
+    return this.withRetry(
+      async () => {
+        const cmd = new DeleteMessageCommand(params);
+        await this.client.send(cmd);
+        Logger.writeLog({
+          flag: "sqs_operations",
+          action: "deleteFromQueue",
+          message: "Message deleted",
+          data: { queueUrl }
+        });
       },
       options.retries,
       options.delayMs

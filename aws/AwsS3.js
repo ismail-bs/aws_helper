@@ -1553,8 +1553,8 @@ class AwsS3 {
    * await AwsS3.enableBucketEncryption('my-bucket');
    * 
    * @example
-   * // Enable KMS encryption with custom key
-   * await AwsS3.enableBucketEncryption('my-bucket', 'aws:kms', 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012');
+   * // Enable KMS encryption with custom key (use your actual account ID and key ID)
+   * await AwsS3.enableBucketEncryption('my-bucket', 'aws:kms', 'arn:aws:kms:us-east-1:YOUR_ACCOUNT_ID:key/YOUR_KEY_ID');
    */
   static async enableBucketEncryption(bucket, encryptionType = "AES256", kmsKeyId = null) {
     try {

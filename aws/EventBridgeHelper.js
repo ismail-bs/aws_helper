@@ -1,15 +1,24 @@
-const fs = require("fs");
-const crypto = require("crypto");
-const {
+import fs from "fs";
+import crypto from "crypto";
+import {
   EventBridgeClient,
   PutEventsCommand,
   PutRuleCommand,
   DeleteRuleCommand,
   PutTargetsCommand,
   RemoveTargetsCommand,
-} = require("@aws-sdk/client-eventbridge");
+  CreateEventBusCommand,
+  DescribeEventBusCommand,
+  DeleteEventBusCommand,
+  DescribeRuleCommand,
+  ListRulesCommand,
+  EnableRuleCommand,
+  DisableRuleCommand,
+  ListTargetsByRuleCommand,
+} from "@aws-sdk/client-eventbridge";
+import dotenv from "dotenv";
 
-require("dotenv").config(); // Load .env
+dotenv.config();
 
 class EventBridgeHelper {
   // AWS client (shared)
@@ -21,10 +30,21 @@ class EventBridgeHelper {
     },
   });
 
-  // Load config (only once at startup)
-  static config = JSON.parse(
-    fs.readFileSync("./service/event-config.json", "utf8")
-  );
+  // Load config (lazy loading - only when needed)
+  static _config = null;
+  static get config() {
+    if (!this._config) {
+      try {
+        this._config = JSON.parse(
+          fs.readFileSync("./service/event-config.json", "utf8")
+        );
+      } catch (error) {
+        console.warn("⚠️  event-config.json not found, config-based methods will not work");
+        this._config = { events: [] };
+      }
+    }
+    return this._config;
+  }
 
   /**
    * Generate a deterministic AWS-safe rule name
@@ -176,6 +196,264 @@ class EventBridgeHelper {
     console.log(`🗑️ Rule deleted: ${ruleName}`);
     return result;
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // DIRECT EVENTBRIDGE OPERATIONS (for testing & dynamic usage)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Initialize EventBridge client with region
+   */
+  static async init(region) {
+    if (!region || typeof region !== "string") {
+      throw new Error("Region must be a non-empty string");
+    }
+
+    this.client = new EventBridgeClient({
+      region,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      },
+    });
+
+    console.log(`✅ EventBridge client initialized for region: ${region}`);
+    return true;
+  }
+
+  /**
+   * Create an event bus
+   */
+  static async createEventBus(eventBusName, tags = []) {
+    if (!eventBusName || typeof eventBusName !== "string") {
+      throw new Error("Event bus name must be a non-empty string");
+    }
+
+    const params = {
+      Name: eventBusName,
+    };
+
+    if (tags && tags.length > 0) {
+      params.Tags = tags;
+    }
+
+    const cmd = new CreateEventBusCommand(params);
+    const result = await this.client.send(cmd);
+    console.log(`✅ Event bus created: ${eventBusName}`);
+    return result;
+  }
+
+  /**
+   * Describe an event bus
+   */
+  static async describeEventBus(eventBusName = "default") {
+    const params = {};
+    if (eventBusName && eventBusName !== "default") {
+      params.Name = eventBusName;
+    }
+
+    const cmd = new DescribeEventBusCommand(params);
+    const result = await this.client.send(cmd);
+    return result;
+  }
+
+  /**
+   * Delete an event bus
+   */
+  static async deleteEventBus(eventBusName) {
+    if (!eventBusName || typeof eventBusName !== "string") {
+      throw new Error("Event bus name must be a non-empty string");
+    }
+
+    if (eventBusName === "default") {
+      throw new Error("Cannot delete the default event bus");
+    }
+
+    const cmd = new DeleteEventBusCommand({
+      Name: eventBusName,
+    });
+    const result = await this.client.send(cmd);
+    console.log(`✅ Event bus deleted: ${eventBusName}`);
+    return result;
+  }
+
+  /**
+   * Create or update a rule (direct, not config-based)
+   */
+  static async putRule(params) {
+    if (!params.Name || typeof params.Name !== "string") {
+      throw new Error("Rule name must be a non-empty string");
+    }
+
+    if (!params.EventPattern && !params.ScheduleExpression) {
+      throw new Error("Rule must have either EventPattern or ScheduleExpression");
+    }
+
+    const cmd = new PutRuleCommand(params);
+    const result = await this.client.send(cmd);
+    console.log(`✅ Rule created/updated: ${params.Name}`);
+    return result;
+  }
+
+  /**
+   * Describe a rule
+   */
+  static async describeRule(ruleName, eventBusName = "default") {
+    if (!ruleName || typeof ruleName !== "string") {
+      throw new Error("Rule name must be a non-empty string");
+    }
+
+    const cmd = new DescribeRuleCommand({
+      Name: ruleName,
+      EventBusName: eventBusName,
+    });
+    const result = await this.client.send(cmd);
+    return result;
+  }
+
+  /**
+   * List all rules on an event bus
+   */
+  static async listRules(eventBusName = "default", namePrefix = null) {
+    const params = {
+      EventBusName: eventBusName,
+    };
+
+    if (namePrefix) {
+      params.NamePrefix = namePrefix;
+    }
+
+    const cmd = new ListRulesCommand(params);
+    const result = await this.client.send(cmd);
+    return result;
+  }
+
+  /**
+   * Enable a rule
+   */
+  static async enableRule(ruleName, eventBusName = "default") {
+    if (!ruleName || typeof ruleName !== "string") {
+      throw new Error("Rule name must be a non-empty string");
+    }
+
+    const cmd = new EnableRuleCommand({
+      Name: ruleName,
+      EventBusName: eventBusName,
+    });
+    const result = await this.client.send(cmd);
+    console.log(`✅ Rule enabled: ${ruleName}`);
+    return result;
+  }
+
+  /**
+   * Disable a rule
+   */
+  static async disableRule(ruleName, eventBusName = "default") {
+    if (!ruleName || typeof ruleName !== "string") {
+      throw new Error("Rule name must be a non-empty string");
+    }
+
+    const cmd = new DisableRuleCommand({
+      Name: ruleName,
+      EventBusName: eventBusName,
+    });
+    const result = await this.client.send(cmd);
+    console.log(`✅ Rule disabled: ${ruleName}`);
+    return result;
+  }
+
+  /**
+   * Delete a rule (direct, not config-based)
+   */
+  static async deleteRuleDirect(ruleName, eventBusName = "default") {
+    if (!ruleName || typeof ruleName !== "string") {
+      throw new Error("Rule name must be a non-empty string");
+    }
+
+    const cmd = new DeleteRuleCommand({
+      Name: ruleName,
+      EventBusName: eventBusName,
+    });
+    const result = await this.client.send(cmd);
+    console.log(`✅ Rule deleted: ${ruleName}`);
+    return result;
+  }
+
+  /**
+   * Add targets to a rule
+   */
+  static async putTargets(ruleName, targets, eventBusName = "default") {
+    if (!ruleName || typeof ruleName !== "string") {
+      throw new Error("Rule name must be a non-empty string");
+    }
+
+    if (!targets || !Array.isArray(targets) || targets.length === 0) {
+      throw new Error("Targets must be a non-empty array");
+    }
+
+    const cmd = new PutTargetsCommand({
+      Rule: ruleName,
+      EventBusName: eventBusName,
+      Targets: targets,
+    });
+    const result = await this.client.send(cmd);
+    console.log(`✅ Targets added to rule: ${ruleName}`);
+    return result;
+  }
+
+  /**
+   * List targets for a rule
+   */
+  static async listTargetsByRule(ruleName, eventBusName = "default") {
+    if (!ruleName || typeof ruleName !== "string") {
+      throw new Error("Rule name must be a non-empty string");
+    }
+
+    const cmd = new ListTargetsByRuleCommand({
+      Rule: ruleName,
+      EventBusName: eventBusName,
+    });
+    const result = await this.client.send(cmd);
+    return result;
+  }
+
+  /**
+   * Remove targets from a rule
+   */
+  static async removeTargets(ruleName, targetIds, eventBusName = "default") {
+    if (!ruleName || typeof ruleName !== "string") {
+      throw new Error("Rule name must be a non-empty string");
+    }
+
+    if (!targetIds || !Array.isArray(targetIds) || targetIds.length === 0) {
+      throw new Error("Target IDs must be a non-empty array");
+    }
+
+    const cmd = new RemoveTargetsCommand({
+      Rule: ruleName,
+      EventBusName: eventBusName,
+      Ids: targetIds,
+    });
+    const result = await this.client.send(cmd);
+    console.log(`✅ Targets removed from rule: ${ruleName}`);
+    return result;
+  }
+
+  /**
+   * Put events (direct, not config-based)
+   */
+  static async putEvents(entries) {
+    if (!entries || !Array.isArray(entries) || entries.length === 0) {
+      throw new Error("Entries must be a non-empty array");
+    }
+
+    const cmd = new PutEventsCommand({
+      Entries: entries,
+    });
+    const result = await this.client.send(cmd);
+    console.log(`✅ Published ${entries.length} event(s)`);
+    return result;
+  }
 }
 
-module.exports = EventBridgeHelper;
+export default EventBridgeHelper;
