@@ -60,12 +60,22 @@ function logTest(methodName, passed, message = "", skipped = false) {
   else testResults.failed++;
 }
 
-async function safeTest(fn) {
+async function safeTest(testName, testFunc, expectError = false) {
   try {
-    await fn();
-    return true;
+    const result = await testFunc();
+    if (expectError) {
+      logTest(testName, false, "Expected error but operation succeeded");
+      return { success: false, result };
+    }
+    const isValid = result !== null && result !== undefined;
+    return { success: isValid, result };
   } catch (error) {
-    return false;
+    if (expectError) {
+      logTest(testName, true, `Expected error: ${error.message.substring(0, 50)}`);
+      return { success: true, result: error };
+    }
+    logTest(testName, false, error.message);
+    return { success: false, result: error };
   }
 }
 
@@ -89,36 +99,27 @@ async function runEventBridgeUnitTests() {
     console.log("🔧 SECTION 1: INITIALIZATION\n");
     
     // Test 1: init() with valid region
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.init(REGION);
-      });
-      logTest("init() with valid region", result, result ? `Initialized: ${REGION}` : "Failed");
+    try {
+      await EventBridgeHelper.init(REGION);
+      logTest("init() [valid region]", true, `Initialized: ${REGION}`);
+    } catch (error) {
+      logTest("init() [valid region]", false, error.message);
     }
     
-    // Test 2: init() with null region
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.init(null);
-      });
-      logTest("init() with null region", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 2: init() with null region (should fail)
+    await safeTest("init() [null region]", async () => {
+      await EventBridgeHelper.init(null);
+    }, true);
     
-    // Test 3: init() with empty region
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.init("");
-      });
-      logTest("init() with empty region", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 3: init() with empty region (should fail)
+    await safeTest("init() [empty region]", async () => {
+      await EventBridgeHelper.init("");
+    }, true);
     
-    // Test 4: init() with invalid type
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.init(12345);
-      });
-      logTest("init() with invalid type", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 4: init() with invalid type (should fail)
+    await safeTest("init() [invalid type]", async () => {
+      await EventBridgeHelper.init(12345);
+    }, true);
     
     
     // ════════════════════════════════════════════════════════════════════════
@@ -128,94 +129,76 @@ async function runEventBridgeUnitTests() {
     console.log("\n🚌 SECTION 2: EVENT BUS OPERATIONS\n");
     
     // Test 5: createEventBus() with valid name
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.createEventBus(TEST_EVENT_BUS);
-        if (!response || !response.EventBusArn) throw new Error("No ARN returned");
-      });
-      logTest("createEventBus() with valid name", result, result ? `Created: ${TEST_EVENT_BUS}` : "Failed");
+    try {
+      const response = await EventBridgeHelper.createEventBus(TEST_EVENT_BUS);
+      if (!response || !response.EventBusArn) throw new Error("No ARN returned");
+      logTest("createEventBus() [valid name]", true, `Created: ${TEST_EVENT_BUS}`);
+    } catch (error) {
+      logTest("createEventBus() [valid name]", false, error.message);
     }
     
-    // Test 6: createEventBus() duplicate name
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.createEventBus(TEST_EVENT_BUS);
-      });
-      logTest("createEventBus() duplicate name", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 6: createEventBus() duplicate name (should fail)
+    await safeTest("createEventBus() [duplicate name]", async () => {
+      await EventBridgeHelper.createEventBus(TEST_EVENT_BUS);
+    }, true);
     
     // Test 7: createEventBus() with tags
-    {
+    try {
       const busName = `${TEST_EVENT_BUS}-tagged`;
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.createEventBus(busName, [
-          { Key: "Environment", Value: "Test" },
-          { Key: "Purpose", Value: "UnitTest" }
-        ]);
-        if (!response || !response.EventBusArn) throw new Error("No ARN returned");
-        // Cleanup
-        await EventBridgeHelper.deleteEventBus(busName);
-      });
-      logTest("createEventBus() with tags", result, result ? "Created with tags" : "Failed");
+      const response = await EventBridgeHelper.createEventBus(busName, [
+        { Key: "Environment", Value: "Test" },
+        { Key: "Purpose", Value: "UnitTest" }
+      ]);
+      if (!response || !response.EventBusArn) throw new Error("No ARN returned");
+      // Cleanup
+      await EventBridgeHelper.deleteEventBus(busName);
+      logTest("createEventBus() [with tags]", true, "Created with tags");
+    } catch (error) {
+      logTest("createEventBus() [with tags]", false, error.message);
     }
     
-    // Test 8: createEventBus() with empty name
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.createEventBus("");
-      });
-      logTest("createEventBus() with empty name", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 8: createEventBus() with empty name (should fail)
+    await safeTest("createEventBus() [empty name]", async () => {
+      await EventBridgeHelper.createEventBus("");
+    }, true);
     
-    // Test 9: createEventBus() with invalid characters
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.createEventBus(`test@bus#${Date.now()}`);
-      });
-      logTest("createEventBus() with invalid chars", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 9: createEventBus() with invalid characters (should fail)
+    await safeTest("createEventBus() [invalid chars]", async () => {
+      await EventBridgeHelper.createEventBus(`test@bus#${Date.now()}`);
+    }, true);
     
     // Test 10: describeEventBus() existing bus
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.describeEventBus(TEST_EVENT_BUS);
-        if (!response || response.Name !== TEST_EVENT_BUS) throw new Error("Bus not found");
-      });
-      logTest("describeEventBus() existing bus", result, result ? `Found: ${TEST_EVENT_BUS}` : "Failed");
+    try {
+      const response = await EventBridgeHelper.describeEventBus(TEST_EVENT_BUS);
+      if (!response || response.Name !== TEST_EVENT_BUS) throw new Error("Bus not found");
+      logTest("describeEventBus() [existing bus]", true, `Found: ${TEST_EVENT_BUS}`);
+    } catch (error) {
+      logTest("describeEventBus() [existing bus]", false, error.message);
     }
     
     // Test 11: describeEventBus() default bus
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.describeEventBus("default");
-        if (!response || response.Name !== "default") throw new Error("Default bus not found");
-      });
-      logTest("describeEventBus() default bus", result, result ? "Found default bus" : "Failed");
+    try {
+      const response = await EventBridgeHelper.describeEventBus("default");
+      if (!response || response.Name !== "default") throw new Error("Default bus not found");
+      logTest("describeEventBus() [default bus]", true, "Found default bus");
+    } catch (error) {
+      logTest("describeEventBus() [default bus]", false, error.message);
     }
     
-    // Test 12: describeEventBus() non-existing bus
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.describeEventBus(`nonexistent-${Date.now()}`);
-      });
-      logTest("describeEventBus() non-existing", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 12: describeEventBus() non-existing bus (should fail)
+    await safeTest("describeEventBus() [non-existing]", async () => {
+      await EventBridgeHelper.describeEventBus(`nonexistent-${Date.now()}`);
+    }, true);
     
     // Test 13: deleteEventBus() default bus (should fail)
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.deleteEventBus("default");
-      });
-      logTest("deleteEventBus() default bus", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    await safeTest("deleteEventBus() [default bus]", async () => {
+      await EventBridgeHelper.deleteEventBus("default");
+    }, true);
     
-    // Test 14: deleteEventBus() with empty name
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.deleteEventBus("");
-      });
-      logTest("deleteEventBus() with empty name", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 14: deleteEventBus() with empty name (should fail)
+    await safeTest("deleteEventBus() [empty name]", async () => {
+      await EventBridgeHelper.deleteEventBus("");
+    }, true);
     
     
     // ════════════════════════════════════════════════════════════════════════
@@ -225,230 +208,203 @@ async function runEventBridgeUnitTests() {
     console.log("\n📋 SECTION 3: RULE OPERATIONS\n");
     
     // Test 15: putRule() with event pattern
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.putRule({
-          Name: TEST_RULE,
-          EventBusName: TEST_EVENT_BUS,
-          EventPattern: JSON.stringify({
-            source: ["custom.test"],
-            "detail-type": ["Test Event"]
-          }),
-          State: "ENABLED",
-          Description: "Unit test rule"
-        });
-        if (!response || !response.RuleArn) throw new Error("No ARN returned");
+    try {
+      const response = await EventBridgeHelper.putRule({
+        Name: TEST_RULE,
+        EventBusName: TEST_EVENT_BUS,
+        EventPattern: JSON.stringify({
+          source: ["custom.test"],
+          "detail-type": ["Test Event"]
+        }),
+        State: "ENABLED",
+        Description: "Unit test rule"
       });
-      logTest("putRule() with event pattern", result, result ? `Created: ${TEST_RULE}` : "Failed");
+      if (!response || !response.RuleArn) throw new Error("No ARN returned");
+      logTest("putRule() [event pattern]", true, `Created: ${TEST_RULE}`);
+    } catch (error) {
+      logTest("putRule() [event pattern]", false, error.message);
     }
     
     // Test 16: putRule() with schedule expression
-    {
+    try {
       const scheduleRule = `${TEST_RULE}-schedule`;
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.putRule({
-          Name: scheduleRule,
-          EventBusName: TEST_EVENT_BUS,
-          ScheduleExpression: "rate(5 minutes)",
-          State: "ENABLED",
-          Description: "Schedule rule"
-        });
-        if (!response || !response.RuleArn) throw new Error("No ARN returned");
-        // Cleanup
-        await EventBridgeHelper.deleteRuleDirect(scheduleRule, TEST_EVENT_BUS);
+      const response = await EventBridgeHelper.putRule({
+        Name: scheduleRule,
+        EventBusName: TEST_EVENT_BUS,
+        ScheduleExpression: "rate(5 minutes)",
+        State: "ENABLED",
+        Description: "Schedule rule"
       });
-      logTest("putRule() with schedule expression", result, result ? "Schedule rule created" : "Failed");
+      if (!response || !response.RuleArn) throw new Error("No ARN returned");
+      // Cleanup
+      await EventBridgeHelper.deleteRuleDirect(scheduleRule, TEST_EVENT_BUS);
+      logTest("putRule() [schedule expression]", true, "Schedule rule created");
+    } catch (error) {
+      logTest("putRule() [schedule expression]", false, error.message);
     }
     
     // Test 17: putRule() with cron expression
-    {
+    try {
       const cronRule = `${TEST_RULE}-cron`;
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.putRule({
-          Name: cronRule,
-          EventBusName: TEST_EVENT_BUS,
-          ScheduleExpression: "cron(0 12 * * ? *)",
-          State: "ENABLED",
-          Description: "Cron rule"
-        });
-        if (!response || !response.RuleArn) throw new Error("No ARN returned");
-        // Cleanup
-        await EventBridgeHelper.deleteRuleDirect(cronRule, TEST_EVENT_BUS);
+      const response = await EventBridgeHelper.putRule({
+        Name: cronRule,
+        EventBusName: TEST_EVENT_BUS,
+        ScheduleExpression: "cron(0 12 * * ? *)",
+        State: "ENABLED",
+        Description: "Cron rule"
       });
-      logTest("putRule() with cron expression", result, result ? "Cron rule created" : "Failed");
+      if (!response || !response.RuleArn) throw new Error("No ARN returned");
+      // Cleanup
+      await EventBridgeHelper.deleteRuleDirect(cronRule, TEST_EVENT_BUS);
+      logTest("putRule() [cron expression]", true, "Cron rule created");
+    } catch (error) {
+      logTest("putRule() [cron expression]", false, error.message);
     }
     
-    // Test 18: putRule() with empty name
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putRule({
-          Name: "",
-          EventBusName: TEST_EVENT_BUS,
-          EventPattern: JSON.stringify({ source: ["test"] }),
-          State: "ENABLED"
-        });
+    // Test 18: putRule() with empty name (should fail)
+    await safeTest("putRule() [empty name]", async () => {
+      await EventBridgeHelper.putRule({
+        Name: "",
+        EventBusName: TEST_EVENT_BUS,
+        EventPattern: JSON.stringify({ source: ["test"] }),
+        State: "ENABLED"
       });
-      logTest("putRule() with empty name", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    }, true);
     
-    // Test 19: putRule() with invalid JSON pattern
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putRule({
-          Name: `${TEST_RULE}-invalid`,
-          EventBusName: TEST_EVENT_BUS,
-          EventPattern: "{ invalid json",
-          State: "ENABLED"
-        });
+    // Test 19: putRule() with invalid JSON pattern (should fail)
+    await safeTest("putRule() [invalid JSON]", async () => {
+      await EventBridgeHelper.putRule({
+        Name: `${TEST_RULE}-invalid`,
+        EventBusName: TEST_EVENT_BUS,
+        EventPattern: "{ invalid json",
+        State: "ENABLED"
       });
-      logTest("putRule() with invalid JSON", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    }, true);
     
-    // Test 20: putRule() without pattern or schedule
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putRule({
-          Name: `${TEST_RULE}-nopattern`,
-          EventBusName: TEST_EVENT_BUS,
-          State: "ENABLED"
-        });
+    // Test 20: putRule() without pattern or schedule (should fail)
+    await safeTest("putRule() [no pattern/schedule]", async () => {
+      await EventBridgeHelper.putRule({
+        Name: `${TEST_RULE}-nopattern`,
+        EventBusName: TEST_EVENT_BUS,
+        State: "ENABLED"
       });
-      logTest("putRule() without pattern/schedule", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    }, true);
     
-    // Test 21: putRule() with null name
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putRule({
-          Name: null,
-          EventBusName: TEST_EVENT_BUS,
-          EventPattern: JSON.stringify({ source: ["test"] }),
-          State: "ENABLED"
-        });
+    // Test 21: putRule() with null name (should fail)
+    await safeTest("putRule() [null name]", async () => {
+      await EventBridgeHelper.putRule({
+        Name: null,
+        EventBusName: TEST_EVENT_BUS,
+        EventPattern: JSON.stringify({ source: ["test"] }),
+        State: "ENABLED"
       });
-      logTest("putRule() with null name", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    }, true);
     
     // Test 22: describeRule() existing rule
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.describeRule(TEST_RULE, TEST_EVENT_BUS);
-        if (!response || response.Name !== TEST_RULE) throw new Error("Rule not found");
-      });
-      logTest("describeRule() existing rule", result, result ? `Found: ${TEST_RULE}` : "Failed");
+    try {
+      const response = await EventBridgeHelper.describeRule(TEST_RULE, TEST_EVENT_BUS);
+      if (!response || response.Name !== TEST_RULE) throw new Error("Rule not found");
+      logTest("describeRule() [existing rule]", true, `Found: ${TEST_RULE}`);
+    } catch (error) {
+      logTest("describeRule() [existing rule]", false, error.message);
     }
     
-    // Test 23: describeRule() non-existing rule
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.describeRule(`nonexistent-${Date.now()}`, TEST_EVENT_BUS);
-      });
-      logTest("describeRule() non-existing", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 23: describeRule() non-existing rule (should fail)
+    await safeTest("describeRule() [non-existing]", async () => {
+      await EventBridgeHelper.describeRule(`nonexistent-${Date.now()}`, TEST_EVENT_BUS);
+    }, true);
     
-    // Test 24: describeRule() with empty name
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.describeRule("", TEST_EVENT_BUS);
-      });
-      logTest("describeRule() with empty name", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 24: describeRule() with empty name (should fail)
+    await safeTest("describeRule() [empty name]", async () => {
+      await EventBridgeHelper.describeRule("", TEST_EVENT_BUS);
+    }, true);
     
     // Test 25: listRules() all rules
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.listRules(TEST_EVENT_BUS);
-        if (!response || !response.Rules) throw new Error("No rules returned");
-        const found = response.Rules.some(r => r.Name === TEST_RULE);
-        if (!found) throw new Error("Test rule not found");
-      });
-      logTest("listRules() all rules", result, result ? "Found test rule" : "Failed");
+    try {
+      const response = await EventBridgeHelper.listRules(TEST_EVENT_BUS);
+      if (!response || !response.Rules) throw new Error("No rules returned");
+      const found = response.Rules.some(r => r.Name === TEST_RULE);
+      if (!found) throw new Error("Test rule not found");
+      logTest("listRules() [all rules]", true, "Found test rule");
+    } catch (error) {
+      logTest("listRules() [all rules]", false, error.message);
     }
     
     // Test 26: listRules() with name prefix
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.listRules(TEST_EVENT_BUS, "test-rule");
-        if (!response || !response.Rules) throw new Error("No rules returned");
-        const allMatch = response.Rules.every(r => r.Name.startsWith("test-rule"));
-        if (!allMatch) throw new Error("Prefix filter not working");
-      });
-      logTest("listRules() with prefix filter", result, result ? "Prefix filter works" : "Failed");
+    try {
+      const response = await EventBridgeHelper.listRules(TEST_EVENT_BUS, "test-rule");
+      if (!response || !response.Rules) throw new Error("No rules returned");
+      const allMatch = response.Rules.every(r => r.Name.startsWith("test-rule"));
+      if (!allMatch) throw new Error("Prefix filter not working");
+      logTest("listRules() [prefix filter]", true, "Prefix filter works");
+    } catch (error) {
+      logTest("listRules() [prefix filter]", false, error.message);
     }
     
     // Test 27: listRules() empty bus
-    {
+    try {
       const emptyBus = `empty-bus-${Date.now()}`;
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.createEventBus(emptyBus);
-        const response = await EventBridgeHelper.listRules(emptyBus);
-        if (!response || !response.Rules) throw new Error("No rules array");
-        if (response.Rules.length !== 0) throw new Error("Bus should be empty");
-        // Cleanup
-        await EventBridgeHelper.deleteEventBus(emptyBus);
-      });
-      logTest("listRules() empty bus", result, result ? "Empty bus verified" : "Failed");
+      await EventBridgeHelper.createEventBus(emptyBus);
+      const response = await EventBridgeHelper.listRules(emptyBus);
+      if (!response || !response.Rules) throw new Error("No rules array");
+      if (response.Rules.length !== 0) throw new Error("Bus should be empty");
+      // Cleanup
+      await EventBridgeHelper.deleteEventBus(emptyBus);
+      logTest("listRules() [empty bus]", true, "Empty bus verified");
+    } catch (error) {
+      logTest("listRules() [empty bus]", false, error.message);
     }
     
     // Test 28: disableRule() valid rule
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.disableRule(TEST_RULE, TEST_EVENT_BUS);
-        const response = await EventBridgeHelper.describeRule(TEST_RULE, TEST_EVENT_BUS);
-        if (response.State !== "DISABLED") throw new Error("Rule not disabled");
-      });
-      logTest("disableRule() valid rule", result, result ? "Rule disabled" : "Failed");
+    try {
+      await EventBridgeHelper.disableRule(TEST_RULE, TEST_EVENT_BUS);
+      const response = await EventBridgeHelper.describeRule(TEST_RULE, TEST_EVENT_BUS);
+      if (response.State !== "DISABLED") throw new Error("Rule not disabled");
+      logTest("disableRule() [valid rule]", true, "Rule disabled");
+    } catch (error) {
+      logTest("disableRule() [valid rule]", false, error.message);
     }
     
     // Test 29: disableRule() idempotent
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.disableRule(TEST_RULE, TEST_EVENT_BUS);
-      });
-      logTest("disableRule() idempotent", result, result ? "Idempotent operation" : "Failed");
+    try {
+      await EventBridgeHelper.disableRule(TEST_RULE, TEST_EVENT_BUS);
+      logTest("disableRule() [idempotent]", true, "Idempotent operation");
+    } catch (error) {
+      logTest("disableRule() [idempotent]", false, error.message);
     }
     
-    // Test 30: disableRule() non-existing
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.disableRule(`nonexistent-${Date.now()}`, TEST_EVENT_BUS);
-      });
-      logTest("disableRule() non-existing", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 30: disableRule() non-existing (should fail)
+    await safeTest("disableRule() [non-existing]", async () => {
+      await EventBridgeHelper.disableRule(`nonexistent-${Date.now()}`, TEST_EVENT_BUS);
+    }, true);
     
     // Test 31: enableRule() valid rule
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.enableRule(TEST_RULE, TEST_EVENT_BUS);
-        const response = await EventBridgeHelper.describeRule(TEST_RULE, TEST_EVENT_BUS);
-        if (response.State !== "ENABLED") throw new Error("Rule not enabled");
-      });
-      logTest("enableRule() valid rule", result, result ? "Rule enabled" : "Failed");
+    try {
+      await EventBridgeHelper.enableRule(TEST_RULE, TEST_EVENT_BUS);
+      const response = await EventBridgeHelper.describeRule(TEST_RULE, TEST_EVENT_BUS);
+      if (response.State !== "ENABLED") throw new Error("Rule not enabled");
+      logTest("enableRule() [valid rule]", true, "Rule enabled");
+    } catch (error) {
+      logTest("enableRule() [valid rule]", false, error.message);
     }
     
     // Test 32: enableRule() idempotent
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.enableRule(TEST_RULE, TEST_EVENT_BUS);
-      });
-      logTest("enableRule() idempotent", result, result ? "Idempotent operation" : "Failed");
+    try {
+      await EventBridgeHelper.enableRule(TEST_RULE, TEST_EVENT_BUS);
+      logTest("enableRule() [idempotent]", true, "Idempotent operation");
+    } catch (error) {
+      logTest("enableRule() [idempotent]", false, error.message);
     }
     
-    // Test 33: enableRule() non-existing
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.enableRule(`nonexistent-${Date.now()}`, TEST_EVENT_BUS);
-      });
-      logTest("enableRule() non-existing", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 33: enableRule() non-existing (should fail)
+    await safeTest("enableRule() [non-existing]", async () => {
+      await EventBridgeHelper.enableRule(`nonexistent-${Date.now()}`, TEST_EVENT_BUS);
+    }, true);
     
-    // Test 34: enableRule() with empty name
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.enableRule("", TEST_EVENT_BUS);
-      });
-      logTest("enableRule() with empty name", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 34: enableRule() with empty name (should fail)
+    await safeTest("enableRule() [empty name]", async () => {
+      await EventBridgeHelper.enableRule("", TEST_EVENT_BUS);
+    }, true);
     
     
     // ════════════════════════════════════════════════════════════════════════
@@ -458,145 +414,118 @@ async function runEventBridgeUnitTests() {
     console.log("\n🎯 SECTION 4: TARGET OPERATIONS\n");
     
     // Test 35: putTargets() with valid target
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.putTargets(TEST_RULE, [
-          {
-            Id: "1",
-            Arn: TEST_TARGET_ARN
-          }
-        ], TEST_EVENT_BUS);
-        // May fail due to permissions - check response
-        if (!response) throw new Error("No response");
-      });
-      logTest("putTargets() with valid target", result, result ? "Target added (or permission error)" : "Failed");
+    try {
+      const response = await EventBridgeHelper.putTargets(TEST_RULE, [
+        {
+          Id: "1",
+          Arn: TEST_TARGET_ARN
+        }
+      ], TEST_EVENT_BUS);
+      // May fail due to permissions - check response
+      if (!response) throw new Error("No response");
+      logTest("putTargets() [valid target]", true, "Target added (or permission error)");
+    } catch (error) {
+      logTest("putTargets() [valid target]", false, error.message);
     }
     
     // Test 36: putTargets() with multiple targets
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.putTargets(TEST_RULE, [
-          { Id: "2", Arn: `${TEST_TARGET_ARN}-2` },
-          { Id: "3", Arn: `${TEST_TARGET_ARN}-3` }
-        ], TEST_EVENT_BUS);
-        if (!response) throw new Error("No response");
-      });
-      logTest("putTargets() multiple targets", result, result ? "Multiple targets added" : "Failed");
+    try {
+      const response = await EventBridgeHelper.putTargets(TEST_RULE, [
+        { Id: "2", Arn: `${TEST_TARGET_ARN}-2` },
+        { Id: "3", Arn: `${TEST_TARGET_ARN}-3` }
+      ], TEST_EVENT_BUS);
+      if (!response) throw new Error("No response");
+      logTest("putTargets() [multiple targets]", true, "Multiple targets added");
+    } catch (error) {
+      logTest("putTargets() [multiple targets]", false, error.message);
     }
     
-    // Test 37: putTargets() with empty array
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putTargets(TEST_RULE, [], TEST_EVENT_BUS);
-      });
-      logTest("putTargets() with empty array", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 37: putTargets() with empty array (should fail)
+    await safeTest("putTargets() [empty array]", async () => {
+      await EventBridgeHelper.putTargets(TEST_RULE, [], TEST_EVENT_BUS);
+    }, true);
     
-    // Test 38: putTargets() with null targets
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putTargets(TEST_RULE, null, TEST_EVENT_BUS);
-      });
-      logTest("putTargets() with null targets", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 38: putTargets() with null targets (should fail)
+    await safeTest("putTargets() [null targets]", async () => {
+      await EventBridgeHelper.putTargets(TEST_RULE, null, TEST_EVENT_BUS);
+    }, true);
     
-    // Test 39: putTargets() with invalid ARN
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putTargets(TEST_RULE, [
-          { Id: "99", Arn: "invalid-arn" }
-        ], TEST_EVENT_BUS);
-      });
-      logTest("putTargets() with invalid ARN", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 39: putTargets() with invalid ARN (should fail)
+    await safeTest("putTargets() [invalid ARN]", async () => {
+      await EventBridgeHelper.putTargets(TEST_RULE, [
+        { Id: "99", Arn: "invalid-arn" }
+      ], TEST_EVENT_BUS);
+    }, true);
     
-    // Test 40: putTargets() duplicate IDs
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putTargets(TEST_RULE, [
-          { Id: "1", Arn: TEST_TARGET_ARN },
-          { Id: "1", Arn: TEST_TARGET_ARN }
-        ], TEST_EVENT_BUS);
-      });
-      logTest("putTargets() duplicate IDs", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 40: putTargets() duplicate IDs (should fail)
+    await safeTest("putTargets() [duplicate IDs]", async () => {
+      await EventBridgeHelper.putTargets(TEST_RULE, [
+        { Id: "1", Arn: TEST_TARGET_ARN },
+        { Id: "1", Arn: TEST_TARGET_ARN }
+      ], TEST_EVENT_BUS);
+    }, true);
     
-    // Test 41: putTargets() with empty rule name
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putTargets("", [
-          { Id: "1", Arn: TEST_TARGET_ARN }
-        ], TEST_EVENT_BUS);
-      });
-      logTest("putTargets() with empty rule name", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 41: putTargets() with empty rule name (should fail)
+    await safeTest("putTargets() [empty rule name]", async () => {
+      await EventBridgeHelper.putTargets("", [
+        { Id: "1", Arn: TEST_TARGET_ARN }
+      ], TEST_EVENT_BUS);
+    }, true);
     
     // Test 42: listTargetsByRule() valid rule
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.listTargetsByRule(TEST_RULE, TEST_EVENT_BUS);
-        if (!response || !Array.isArray(response.Targets)) throw new Error("No targets array");
-      });
-      logTest("listTargetsByRule() valid rule", result, result ? "Targets listed" : "Failed");
+    try {
+      const response = await EventBridgeHelper.listTargetsByRule(TEST_RULE, TEST_EVENT_BUS);
+      if (!response || !Array.isArray(response.Targets)) throw new Error("No targets array");
+      logTest("listTargetsByRule() [valid rule]", true, "Targets listed");
+    } catch (error) {
+      logTest("listTargetsByRule() [valid rule]", false, error.message);
     }
     
-    // Test 43: listTargetsByRule() non-existing rule
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.listTargetsByRule(`nonexistent-${Date.now()}`, TEST_EVENT_BUS);
-      });
-      logTest("listTargetsByRule() non-existing", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 43: listTargetsByRule() non-existing rule (should fail)
+    await safeTest("listTargetsByRule() [non-existing]", async () => {
+      await EventBridgeHelper.listTargetsByRule(`nonexistent-${Date.now()}`, TEST_EVENT_BUS);
+    }, true);
     
-    // Test 44: listTargetsByRule() with empty name
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.listTargetsByRule("", TEST_EVENT_BUS);
-      });
-      logTest("listTargetsByRule() with empty name", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 44: listTargetsByRule() with empty name (should fail)
+    await safeTest("listTargetsByRule() [empty name]", async () => {
+      await EventBridgeHelper.listTargetsByRule("", TEST_EVENT_BUS);
+    }, true);
     
     // Test 45: removeTargets() valid target
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.removeTargets(TEST_RULE, ["1"], TEST_EVENT_BUS);
-        if (!response) throw new Error("No response");
-      });
-      logTest("removeTargets() valid target", result, result ? "Target removed" : "Failed");
+    try {
+      const response = await EventBridgeHelper.removeTargets(TEST_RULE, ["1"], TEST_EVENT_BUS);
+      if (!response) throw new Error("No response");
+      logTest("removeTargets() [valid target]", true, "Target removed");
+    } catch (error) {
+      logTest("removeTargets() [valid target]", false, error.message);
     }
     
     // Test 46: removeTargets() multiple IDs
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.removeTargets(TEST_RULE, ["2", "3"], TEST_EVENT_BUS);
-        if (!response) throw new Error("No response");
-      });
-      logTest("removeTargets() multiple IDs", result, result ? "Multiple targets removed" : "Failed");
+    try {
+      const response = await EventBridgeHelper.removeTargets(TEST_RULE, ["2", "3"], TEST_EVENT_BUS);
+      if (!response) throw new Error("No response");
+      logTest("removeTargets() [multiple IDs]", true, "Multiple targets removed");
+    } catch (error) {
+      logTest("removeTargets() [multiple IDs]", false, error.message);
     }
     
     // Test 47: removeTargets() non-existing ID (idempotent)
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.removeTargets(TEST_RULE, ["999"], TEST_EVENT_BUS);
-      });
-      logTest("removeTargets() non-existing ID", result, result ? "Idempotent operation" : "Failed");
+    try {
+      await EventBridgeHelper.removeTargets(TEST_RULE, ["999"], TEST_EVENT_BUS);
+      logTest("removeTargets() [non-existing ID]", true, "Idempotent operation");
+    } catch (error) {
+      logTest("removeTargets() [non-existing ID]", false, error.message);
     }
     
-    // Test 48: removeTargets() with empty array
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.removeTargets(TEST_RULE, [], TEST_EVENT_BUS);
-      });
-      logTest("removeTargets() with empty array", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 48: removeTargets() with empty array (should fail)
+    await safeTest("removeTargets() [empty array]", async () => {
+      await EventBridgeHelper.removeTargets(TEST_RULE, [], TEST_EVENT_BUS);
+    }, true);
     
-    // Test 49: removeTargets() with null IDs
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.removeTargets(TEST_RULE, null, TEST_EVENT_BUS);
-      });
-      logTest("removeTargets() with null IDs", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 49: removeTargets() with null IDs (should fail)
+    await safeTest("removeTargets() [null IDs]", async () => {
+      await EventBridgeHelper.removeTargets(TEST_RULE, null, TEST_EVENT_BUS);
+    }, true);
     
     
     // ════════════════════════════════════════════════════════════════════════
@@ -606,144 +535,129 @@ async function runEventBridgeUnitTests() {
     console.log("\n📨 SECTION 5: EVENT PUBLISHING\n");
     
     // Test 50: putEvents() single event
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.putEvents([
-          {
-            Source: "custom.test",
-            DetailType: "Test Event",
-            Detail: JSON.stringify({ test: "data", timestamp: new Date().toISOString() }),
-            EventBusName: TEST_EVENT_BUS
-          }
-        ]);
-        if (!response || response.FailedEntryCount !== 0) throw new Error("Event failed");
-      });
-      logTest("putEvents() single event", result, result ? "Event published" : "Failed");
+    try {
+      const response = await EventBridgeHelper.putEvents([
+        {
+          Source: "custom.test",
+          DetailType: "Test Event",
+          Detail: JSON.stringify({ test: "data", timestamp: new Date().toISOString() }),
+          EventBusName: TEST_EVENT_BUS
+        }
+      ]);
+      if (!response || response.FailedEntryCount !== 0) throw new Error("Event failed");
+      logTest("putEvents() [single event]", true, "Event published");
+    } catch (error) {
+      logTest("putEvents() [single event]", false, error.message);
     }
     
     // Test 51: putEvents() batch events
-    {
-      const result = await safeTest(async () => {
-        const entries = Array.from({ length: 5 }, (_, i) => ({
-          Source: "custom.test",
-          DetailType: "Batch Event",
-          Detail: JSON.stringify({ id: i, timestamp: new Date().toISOString() }),
-          EventBusName: TEST_EVENT_BUS
-        }));
-        const response = await EventBridgeHelper.putEvents(entries);
-        if (!response || response.FailedEntryCount !== 0) throw new Error("Events failed");
-      });
-      logTest("putEvents() batch events", result, result ? "Batch published" : "Failed");
+    try {
+      const entries = Array.from({ length: 5 }, (_, i) => ({
+        Source: "custom.test",
+        DetailType: "Batch Event",
+        Detail: JSON.stringify({ id: i, timestamp: new Date().toISOString() }),
+        EventBusName: TEST_EVENT_BUS
+      }));
+      const response = await EventBridgeHelper.putEvents(entries);
+      if (!response || response.FailedEntryCount !== 0) throw new Error("Events failed");
+      logTest("putEvents() [batch events]", true, "Batch published");
+    } catch (error) {
+      logTest("putEvents() [batch events]", false, error.message);
     }
     
     // Test 52: putEvents() with resources
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.putEvents([
-          {
-            Source: "custom.test",
-            DetailType: "Event With Resources",
-            Detail: JSON.stringify({ test: "data" }),
-            Resources: [`arn:aws:test:${REGION}:${ACCOUNT_ID}:resource/test`],
-            EventBusName: TEST_EVENT_BUS
-          }
-        ]);
-        if (!response || response.FailedEntryCount !== 0) throw new Error("Event failed");
-      });
-      logTest("putEvents() with resources", result, result ? "Event with resources" : "Failed");
+    try {
+      const response = await EventBridgeHelper.putEvents([
+        {
+          Source: "custom.test",
+          DetailType: "Event With Resources",
+          Detail: JSON.stringify({ test: "data" }),
+          Resources: [`arn:aws:test:${REGION}:${ACCOUNT_ID}:resource/test`],
+          EventBusName: TEST_EVENT_BUS
+        }
+      ]);
+      if (!response || response.FailedEntryCount !== 0) throw new Error("Event failed");
+      logTest("putEvents() [with resources]", true, "Event with resources");
+    } catch (error) {
+      logTest("putEvents() [with resources]", false, error.message);
     }
     
     // Test 53: putEvents() to default bus
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.putEvents([
-          {
-            Source: "custom.test",
-            DetailType: "Default Bus Event",
-            Detail: JSON.stringify({ test: "default" })
-          }
-        ]);
-        if (!response || response.FailedEntryCount !== 0) throw new Error("Event failed");
-      });
-      logTest("putEvents() to default bus", result, result ? "Default bus event" : "Failed");
+    try {
+      const response = await EventBridgeHelper.putEvents([
+        {
+          Source: "custom.test",
+          DetailType: "Default Bus Event",
+          Detail: JSON.stringify({ test: "default" })
+        }
+      ]);
+      if (!response || response.FailedEntryCount !== 0) throw new Error("Event failed");
+      logTest("putEvents() [to default bus]", true, "Default bus event");
+    } catch (error) {
+      logTest("putEvents() [to default bus]", false, error.message);
     }
     
-    // Test 54: putEvents() with empty array
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putEvents([]);
-      });
-      logTest("putEvents() with empty array", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 54: putEvents() with empty array (should fail)
+    await safeTest("putEvents() [empty array]", async () => {
+      await EventBridgeHelper.putEvents([]);
+    }, true);
     
-    // Test 55: putEvents() with null entries
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putEvents(null);
-      });
-      logTest("putEvents() with null entries", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 55: putEvents() with null entries (should fail)
+    await safeTest("putEvents() [null entries]", async () => {
+      await EventBridgeHelper.putEvents(null);
+    }, true);
     
-    // Test 56: putEvents() missing required fields
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putEvents([
-          {
-            Detail: JSON.stringify({ test: "data" })
-            // Missing Source and DetailType
-          }
-        ]);
-      });
-      logTest("putEvents() missing fields", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 56: putEvents() missing required fields (should fail)
+    await safeTest("putEvents() [missing fields]", async () => {
+      await EventBridgeHelper.putEvents([
+        {
+          Detail: JSON.stringify({ test: "data" })
+          // Missing Source and DetailType
+        }
+      ]);
+    }, true);
     
-    // Test 57: putEvents() with invalid JSON detail
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putEvents([
-          {
-            Source: "custom.test",
-            DetailType: "Invalid",
-            Detail: { invalid: "should be string" } // Should be JSON string
-          }
-        ]);
-      });
-      logTest("putEvents() with invalid detail", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 57: putEvents() with invalid JSON detail (should fail)
+    await safeTest("putEvents() [invalid detail]", async () => {
+      await EventBridgeHelper.putEvents([
+        {
+          Source: "custom.test",
+          DetailType: "Invalid",
+          Detail: { invalid: "should be string" } // Should be JSON string
+        }
+      ]);
+    }, true);
     
-    // Test 58: putEvents() oversized event (>256KB)
-    {
-      const result = await safeTest(async () => {
-        const largeData = "x".repeat(300 * 1024); // 300KB
-        await EventBridgeHelper.putEvents([
-          {
-            Source: "custom.test",
-            DetailType: "Oversized",
-            Detail: JSON.stringify({ data: largeData }),
-            EventBusName: TEST_EVENT_BUS
-          }
-        ]);
-      });
-      logTest("putEvents() oversized event", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 58: putEvents() oversized event (>256KB) (should fail)
+    await safeTest("putEvents() [oversized event]", async () => {
+      const largeData = "x".repeat(300 * 1024); // 300KB
+      await EventBridgeHelper.putEvents([
+        {
+          Source: "custom.test",
+          DetailType: "Oversized",
+          Detail: JSON.stringify({ data: largeData }),
+          EventBusName: TEST_EVENT_BUS
+        }
+      ]);
+    }, true);
     
     // Test 59: putEvents() with special characters
-    {
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.putEvents([
-          {
-            Source: "custom.test",
-            DetailType: "Special Chars",
-            Detail: JSON.stringify({
-              unicode: "Hello 世界 🌍",
-              special: "Tab:\t Newline:\n Quote:\" Backslash:\\"
-            }),
-            EventBusName: TEST_EVENT_BUS
-          }
-        ]);
-        if (!response || response.FailedEntryCount !== 0) throw new Error("Event failed");
-      });
-      logTest("putEvents() with special chars", result, result ? "Special chars handled" : "Failed");
+    try {
+      const response = await EventBridgeHelper.putEvents([
+        {
+          Source: "custom.test",
+          DetailType: "Special Chars",
+          Detail: JSON.stringify({
+            unicode: "Hello 世界 🌍",
+            special: "Tab:\t Newline:\n Quote:\" Backslash:\\"
+          }),
+          EventBusName: TEST_EVENT_BUS
+        }
+      ]);
+      if (!response || response.FailedEntryCount !== 0) throw new Error("Event failed");
+      logTest("putEvents() [special chars]", true, "Special chars handled");
+    } catch (error) {
+      logTest("putEvents() [special chars]", false, error.message);
     }
     
     
@@ -754,103 +668,98 @@ async function runEventBridgeUnitTests() {
     console.log("\n⚠️  SECTION 6: EDGE CASES\n");
     
     // Test 60: putRule() with very long name (max 64 chars)
-    {
+    try {
       const longName = `rule-${"x".repeat(50)}-${Date.now()}`.substring(0, 64);
-      const result = await safeTest(async () => {
-        const response = await EventBridgeHelper.putRule({
-          Name: longName,
-          EventBusName: TEST_EVENT_BUS,
-          EventPattern: JSON.stringify({ source: ["test"] }),
-          State: "ENABLED"
-        });
-        if (!response || !response.RuleArn) throw new Error("No ARN returned");
-        // Cleanup
-        await EventBridgeHelper.deleteRuleDirect(longName, TEST_EVENT_BUS);
+      const response = await EventBridgeHelper.putRule({
+        Name: longName,
+        EventBusName: TEST_EVENT_BUS,
+        EventPattern: JSON.stringify({ source: ["test"] }),
+        State: "ENABLED"
       });
-      logTest("Edge: long rule name (64 chars)", result, result ? "Long name accepted" : "Failed");
-    }
-    
-    // Test 61: putRule() name too long (>64 chars)
-    {
-      const tooLong = `rule-${"x".repeat(100)}-${Date.now()}`;
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.putRule({
-          Name: tooLong,
-          EventBusName: TEST_EVENT_BUS,
-          EventPattern: JSON.stringify({ source: ["test"] }),
-          State: "ENABLED"
-        });
-      });
-      logTest("Edge: name too long (>64 chars)", !result, !result ? "Correctly rejected" : "Should fail");
-    }
-    
-    // Test 62: deleteRule() with targets still attached
-    {
-      const ruleWithTargets = `${TEST_RULE}-withtargets`;
-      const result = await safeTest(async () => {
-        // Create rule
-        await EventBridgeHelper.putRule({
-          Name: ruleWithTargets,
-          EventBusName: TEST_EVENT_BUS,
-          EventPattern: JSON.stringify({ source: ["test"] }),
-          State: "ENABLED"
-        });
-        // Add target (may fail due to permissions, ignore)
-        try {
-          await EventBridgeHelper.putTargets(ruleWithTargets, [
-            { Id: "1", Arn: TEST_TARGET_ARN }
-          ], TEST_EVENT_BUS);
-        } catch (e) {}
-        // Try to delete rule without removing targets first
-        await EventBridgeHelper.deleteRuleDirect(ruleWithTargets, TEST_EVENT_BUS);
-      });
-      logTest("Edge: delete rule with targets", !result, !result ? "Correctly rejected" : "Should fail");
+      if (!response || !response.RuleArn) throw new Error("No ARN returned");
       // Cleanup
-      await safeTest(async () => {
+      await EventBridgeHelper.deleteRuleDirect(longName, TEST_EVENT_BUS);
+      logTest("Edge [long rule name 64 chars]", true, "Long name accepted");
+    } catch (error) {
+      logTest("Edge [long rule name 64 chars]", false, error.message);
+    }
+    
+    // Test 61: putRule() name too long (>64 chars) (should fail)
+    await safeTest("Edge [name too long >64]", async () => {
+      const tooLong = `rule-${"x".repeat(100)}-${Date.now()}`;
+      await EventBridgeHelper.putRule({
+        Name: tooLong,
+        EventBusName: TEST_EVENT_BUS,
+        EventPattern: JSON.stringify({ source: ["test"] }),
+        State: "ENABLED"
+      });
+    }, true);
+    
+    // Test 62: deleteRule() with targets still attached (should fail)
+    try {
+      const ruleWithTargets = `${TEST_RULE}-withtargets`;
+      // Create rule
+      await EventBridgeHelper.putRule({
+        Name: ruleWithTargets,
+        EventBusName: TEST_EVENT_BUS,
+        EventPattern: JSON.stringify({ source: ["test"] }),
+        State: "ENABLED"
+      });
+      // Add target (may fail due to permissions, ignore)
+      try {
+        await EventBridgeHelper.putTargets(ruleWithTargets, [
+          { Id: "1", Arn: TEST_TARGET_ARN }
+        ], TEST_EVENT_BUS);
+      } catch (e) {}
+      // Try to delete rule without removing targets first
+      const result = await safeTest("Edge [delete rule with targets]", async () => {
+        await EventBridgeHelper.deleteRuleDirect(ruleWithTargets, TEST_EVENT_BUS);
+      }, true);
+      // Cleanup
+      try {
         await EventBridgeHelper.removeTargets(ruleWithTargets, ["1"], TEST_EVENT_BUS);
         await EventBridgeHelper.deleteRuleDirect(ruleWithTargets, TEST_EVENT_BUS);
-      });
+      } catch (e) {}
+    } catch (error) {
+      logTest("Edge [delete rule with targets]", false, error.message);
     }
     
-    // Test 63: deleteEventBus() with rules attached
-    {
-      const result = await safeTest(async () => {
-        // TEST_EVENT_BUS still has TEST_RULE attached
-        await EventBridgeHelper.deleteEventBus(TEST_EVENT_BUS);
-      });
-      logTest("Edge: delete bus with rules", !result, !result ? "Correctly rejected" : "Should fail");
-    }
+    // Test 63: deleteEventBus() with rules attached (should fail)
+    await safeTest("Edge [delete bus with rules]", async () => {
+      // TEST_EVENT_BUS still has TEST_RULE attached
+      await EventBridgeHelper.deleteEventBus(TEST_EVENT_BUS);
+    }, true);
     
     // Test 64: Concurrent putEvents operations
-    {
-      const result = await safeTest(async () => {
-        const promises = Array.from({ length: 5 }, (_, i) =>
-          EventBridgeHelper.putEvents([
-            {
-              Source: "custom.test",
-              DetailType: "Concurrent Event",
-              Detail: JSON.stringify({ id: i, timestamp: new Date().toISOString() }),
-              EventBusName: TEST_EVENT_BUS
-            }
-          ])
-        );
-        const results = await Promise.all(promises);
-        if (results.some(r => !r || r.FailedEntryCount !== 0)) throw new Error("Some events failed");
-      });
-      logTest("Edge: concurrent putEvents", result, result ? "Concurrent ops succeeded" : "Failed");
+    try {
+      const promises = Array.from({ length: 5 }, (_, i) =>
+        EventBridgeHelper.putEvents([
+          {
+            Source: "custom.test",
+            DetailType: "Concurrent Event",
+            Detail: JSON.stringify({ id: i, timestamp: new Date().toISOString() }),
+            EventBusName: TEST_EVENT_BUS
+          }
+        ])
+      );
+      const results = await Promise.all(promises);
+      if (results.some(r => !r || r.FailedEntryCount !== 0)) throw new Error("Some events failed");
+      logTest("Edge [concurrent putEvents]", true, "Concurrent ops succeeded");
+    } catch (error) {
+      logTest("Edge [concurrent putEvents]", false, error.message);
     }
     
     // Test 65: generateRuleName() deterministic
-    {
-      const result = await safeTest(async () => {
-        const name1 = EventBridgeHelper.generateRuleName("test-flag", "custom-data");
-        const name2 = EventBridgeHelper.generateRuleName("test-flag", "custom-data");
-        if (name1 !== name2) throw new Error("Names not deterministic");
-        
-        const name3 = EventBridgeHelper.generateRuleName("test-flag", "different-data");
-        if (name1 === name3) throw new Error("Different data should produce different name");
-      });
-      logTest("Edge: generateRuleName deterministic", result, result ? "Deterministic naming works" : "Failed");
+    try {
+      const name1 = EventBridgeHelper.generateRuleName("test-flag", "custom-data");
+      const name2 = EventBridgeHelper.generateRuleName("test-flag", "custom-data");
+      if (name1 !== name2) throw new Error("Names not deterministic");
+      
+      const name3 = EventBridgeHelper.generateRuleName("test-flag", "different-data");
+      if (name1 === name3) throw new Error("Different data should produce different name");
+      logTest("Edge [generateRuleName deterministic]", true, "Deterministic naming works");
+    } catch (error) {
+      logTest("Edge [generateRuleName deterministic]", false, error.message);
     }
     
     
@@ -861,28 +770,25 @@ async function runEventBridgeUnitTests() {
     console.log("\n🧹 CLEANUP\n");
     
     // Test 66: Delete test rule
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.deleteRuleDirect(TEST_RULE, TEST_EVENT_BUS);
-      });
-      logTest("Cleanup: delete test rule", result, result ? `Deleted: ${TEST_RULE}` : "Failed");
+    try {
+      await EventBridgeHelper.deleteRuleDirect(TEST_RULE, TEST_EVENT_BUS);
+      logTest("Cleanup [delete test rule]", true, `Deleted: ${TEST_RULE}`);
+    } catch (error) {
+      logTest("Cleanup [delete test rule]", false, error.message);
     }
     
     // Test 67: Delete test event bus
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.deleteEventBus(TEST_EVENT_BUS);
-      });
-      logTest("Cleanup: delete test bus", result, result ? `Deleted: ${TEST_EVENT_BUS}` : "Failed");
+    try {
+      await EventBridgeHelper.deleteEventBus(TEST_EVENT_BUS);
+      logTest("Cleanup [delete test bus]", true, `Deleted: ${TEST_EVENT_BUS}`);
+    } catch (error) {
+      logTest("Cleanup [delete test bus]", false, error.message);
     }
     
-    // Test 68: Verify bus is deleted
-    {
-      const result = await safeTest(async () => {
-        await EventBridgeHelper.describeEventBus(TEST_EVENT_BUS);
-      });
-      logTest("Cleanup: verify bus deleted", !result, !result ? "Bus successfully deleted" : "Should fail");
-    }
+    // Test 68: Verify bus is deleted (should fail)
+    await safeTest("Cleanup [verify bus deleted]", async () => {
+      await EventBridgeHelper.describeEventBus(TEST_EVENT_BUS);
+    }, true);
     
     
     // ════════════════════════════════════════════════════════════════════════

@@ -49,15 +49,23 @@ let testResults = {
 };
 
 // Helper function to safely run tests that are expected to fail/error
-async function safeTest(fn) {
-  return async () => {
-    try {
-      await fn();
-      return { success: true };
-    } catch (error) {
-      return { success: false, error };
+async function safeTest(testName, testFunc, expectError = false) {
+  try {
+    const result = await testFunc();
+    if (expectError) {
+      logTest(testName, false, "Expected error but operation succeeded");
+      return { success: false, result };
     }
-  };
+    const isValid = result !== null && result !== undefined;
+    return { success: isValid, result };
+  } catch (error) {
+    if (expectError) {
+      logTest(testName, true, `Expected error: ${error.message.substring(0, 50)}`);
+      return { success: true, result: error };
+    }
+    logTest(testName, false, error.message);
+    return { success: false, result: error };
+  }
 }
 
 function logTest(methodName, passed, message = "", skipped = false) {
@@ -105,63 +113,45 @@ async function runSqsUnitTests() {
     console.log("🔧 SECTION 1: INITIALIZATION & CONFIGURATION\n");
     
     // Test 1: init() with valid region
-    {
-      const result = await safeTest(async () => {
-        await SQSHelper.init(REGION);
-      })();
-      logTest("init(valid_region)", result.success, 
-        result.success ? `Initialized with region ${REGION}` : result.error.message);
+    try {
+      await SQSHelper.init(REGION);
+      logTest("init() [valid region]", true, `Initialized with region ${REGION}`);
+    } catch (error) {
+      logTest("init() [valid region]", false, error.message);
     }
     
     // Test 2: init() with null region (should fail)
-    {
-      const result = await safeTest(async () => {
-        await SQSHelper.init(null);
-      })();
-      logTest("init(null_region)", !result.success, 
-        !result.success ? "Correctly rejected null region" : "Should have failed");
-    }
+    await safeTest("init() [null region]", async () => {
+      await SQSHelper.init(null);
+    }, true);
     
     // Test 3: init() with empty string region (should fail)
-    {
-      const result = await safeTest(async () => {
-        await SQSHelper.init("");
-      })();
-      logTest("init(empty_region)", !result.success, 
-        !result.success ? "Correctly rejected empty region" : "Should have failed");
-    }
+    await safeTest("init() [empty region]", async () => {
+      await SQSHelper.init("");
+    }, true);
     
     // Test 4: init() with invalid type (should fail)
-    {
-      const result = await safeTest(async () => {
-        await SQSHelper.init(12345);
-      })();
-      logTest("init(invalid_type)", !result.success, 
-        !result.success ? "Correctly rejected non-string region" : "Should have failed");
-    }
+    await safeTest("init() [invalid type]", async () => {
+      await SQSHelper.init(12345);
+    }, true);
     
     // Test 5: getQueueConfig() with valid flag (requires queue-config.json)
-    {
-      const result = await safeTest(async () => {
-        // Try to get the first queue config from the file
-        const firstQueueFlag = SQSHelper.config.queues[0]?.flag;
-        if (!firstQueueFlag) throw new Error("No queue configuration found");
-        
-        const config = SQSHelper.getQueueConfig(firstQueueFlag);
-        if (!config.queueUrl) throw new Error("Missing queueUrl");
-      })();
-      logTest("getQueueConfig(valid_flag)", result.success, 
-        result.success ? "Retrieved queue configuration" : result.error.message);
+    try {
+      // Try to get the first queue config from the file
+      const firstQueueFlag = SQSHelper.config.queues[0]?.flag;
+      if (!firstQueueFlag) throw new Error("No queue configuration found");
+      
+      const config = SQSHelper.getQueueConfig(firstQueueFlag);
+      if (!config.queueUrl) throw new Error("Missing queueUrl");
+      logTest("getQueueConfig() [valid flag]", true, "Retrieved queue configuration");
+    } catch (error) {
+      logTest("getQueueConfig() [valid flag]", false, error.message);
     }
     
     // Test 6: getQueueConfig() with non-existent flag (should fail)
-    {
-      const result = await safeTest(async () => {
-        SQSHelper.getQueueConfig("non_existent_flag_xyz_123");
-      })();
-      logTest("getQueueConfig(invalid_flag)", !result.success, 
-        !result.success ? "Correctly rejected invalid flag" : "Should have failed");
-    }
+    await safeTest("getQueueConfig() [invalid flag]", async () => {
+      SQSHelper.getQueueConfig("non_existent_flag_xyz_123");
+    }, true);
     
     
     // ════════════════════════════════════════════════════════════════════════
@@ -177,92 +167,85 @@ async function runSqsUnitTests() {
       }
     } else {
       
-            // Test 7: sendToQueue() with valid message
-      {
-        const result = await safeTest(async () => {
-          const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, {
-            test: "data",
-            timestamp: Date.now()
-          });
-          return response && response.MessageId;
+      // Test 7: sendToQueue() with valid message
+      try {
+        const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, {
+          test: "data",
+          timestamp: Date.now()
         });
-        logTest("sendToQueue() with valid message", result);
+        const isValid = response && response.MessageId;
+        logTest("sendToQueue() [valid message]", isValid, 
+          isValid ? `Sent message ID: ${response.MessageId.substring(0, 20)}...` : "Failed");
+      } catch (error) {
+        logTest("sendToQueue() [valid message]", false, error.message);
       }
       
       // Test 8: sendToQueue() with string message
-      {
-        const result = await safeTest(async () => {
-          const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, "simple string message");
-          return response && response.MessageId;
-        });
-        logTest("sendToQueue() with string message", result);
+      try {
+        const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, "simple string message");
+        const isValid = response && response.MessageId;
+        logTest("sendToQueue() [string message]", isValid, "String message sent");
+      } catch (error) {
+        logTest("sendToQueue() [string message]", false, error.message);
       }
       
       // Test 9: sendToQueue() with delay
-      {
-        const result = await safeTest(async () => {
-          const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, { delayed: true }, {
-            delaySeconds: 5
-          });
-          return response && response.MessageId;
+      try {
+        const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, { delayed: true }, {
+          delaySeconds: 5
         });
-        logTest("sendToQueue() with delay seconds", result);
+        const isValid = response && response.MessageId;
+        logTest("sendToQueue() [with delay]", isValid, "Message sent with 5s delay");
+      } catch (error) {
+        logTest("sendToQueue() [with delay]", false, error.message);
       }
       
       // Test 10: sendToQueue() with message attributes
-      {
-        const result = await safeTest(async () => {
-          const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, { data: "test" }, {
-            messageAttributes: {
-              Priority: { DataType: 'String', StringValue: 'High' },
-              Count: { DataType: 'Number', StringValue: '100' }
-            }
-          });
-          return response && response.MessageId;
+      try {
+        const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, { data: "test" }, {
+          messageAttributes: {
+            Priority: { DataType: 'String', StringValue: 'High' },
+            Count: { DataType: 'Number', StringValue: '100' }
+          }
         });
-        logTest("sendToQueue() with message attributes", result);
+        const isValid = response && response.MessageId;
+        logTest("sendToQueue() [with attributes]", isValid, "Message with attributes sent");
+      } catch (error) {
+        logTest("sendToQueue() [with attributes]", false, error.message);
       }
       
       // Test 11: sendToQueue() with deduplication ID
-      {
-        const result = await safeTest(async () => {
-          const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, { unique: "data" }, {
-            messageDeduplicationId: `dedup-${Date.now()}`,
-            messageGroupId: "test-group"
-          });
-          return response && response.MessageId;
+      try {
+        const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, { unique: "data" }, {
+          messageDeduplicationId: `dedup-${Date.now()}`,
+          messageGroupId: "test-group"
         });
-        logTest("sendToQueue() with deduplication ID", result);
+        const isValid = response && response.MessageId;
+        logTest("sendToQueue() [with dedup ID]", isValid, "Message with deduplication ID sent");
+      } catch (error) {
+        logTest("sendToQueue() [with dedup ID]", false, error.message);
       }
       
-      // Test 12: sendToQueue() with invalid URL
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.sendToQueue("https://invalid-queue-url.com", { test: "data" });
-          return false;
-        });
-        logTest("sendToQueue() with invalid URL", !result);
-      }
+      // Test 12: sendToQueue() with invalid URL (should fail)
+      await safeTest("sendToQueue() [invalid URL]", async () => {
+        await SQSHelper.sendToQueue("https://invalid-queue-url.com", { test: "data" });
+      }, true);
       
-      // Test 13: sendToQueue() with empty message
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.sendToQueue(TEST_QUEUE_URL, null);
-          return false;
-        });
-        logTest("sendToQueue() with empty message", !result);
-      }
+      // Test 13: sendToQueue() with empty message (should fail)
+      await safeTest("sendToQueue() [null message]", async () => {
+        await SQSHelper.sendToQueue(TEST_QUEUE_URL, null);
+      }, true);
       
       // Test 14: sendToQueue() with very large message
-      {
-        const result = await safeTest(async () => {
-          const largeMessage = {
-            data: "x".repeat(256 * 1024) // 256KB (SQS limit)
-          };
-          const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, largeMessage);
-          return response && response.MessageId;
-        });
-        logTest("sendToQueue() with large message", result);
+      try {
+        const largeMessage = {
+          data: "x".repeat(256 * 1024) // 256KB (SQS limit)
+        };
+        const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, largeMessage);
+        const isValid = response && response.MessageId;
+        logTest("sendToQueue() [large 256KB]", isValid, "Large message sent (256KB)");
+      } catch (error) {
+        logTest("sendToQueue() [large 256KB]", false, error.message);
       }
     }
     
@@ -281,84 +264,74 @@ async function runSqsUnitTests() {
     } else {
       
       // Test 15: sendBatchToQueue() with valid messages
-      {
-        const result = await safeTest(async () => {
-          const messages = [
-            { id: 1, data: "message 1" },
-            { id: 2, data: "message 2" },
-            { id: 3, data: "message 3" }
-          ];
-          const response = await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, messages);
-          return response && response.Successful && response.Successful.length === 3;
-        });
-        logTest("sendBatchToQueue() with 3 messages", result);
+      try {
+        const messages = [
+          { id: 1, data: "message 1" },
+          { id: 2, data: "message 2" },
+          { id: 3, data: "message 3" }
+        ];
+        const response = await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, messages);
+        const isValid = response && response.Successful && response.Successful.length === 3;
+        logTest("sendBatchToQueue() [3 messages]", isValid, 
+          isValid ? `Sent ${response.Successful.length} messages` : "Failed");
+      } catch (error) {
+        logTest("sendBatchToQueue() [3 messages]", false, error.message);
       }
       
       // Test 16: sendBatchToQueue() with single message
-      {
-        const result = await safeTest(async () => {
-          const messages = [{ single: "message" }];
-          const response = await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, messages);
-          return response && response.Successful && response.Successful.length === 1;
-        });
-        logTest("sendBatchToQueue() with single message", result);
+      try {
+        const messages = [{ single: "message" }];
+        const response = await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, messages);
+        const isValid = response && response.Successful && response.Successful.length === 1;
+        logTest("sendBatchToQueue() [single message]", isValid, "Single message sent");
+      } catch (error) {
+        logTest("sendBatchToQueue() [single message]", false, error.message);
       }
       
       // Test 17: sendBatchToQueue() with 10 messages (AWS limit)
-      {
-        const result = await safeTest(async () => {
-          const messages = Array.from({ length: 10 }, (_, i) => ({
-            index: i,
-            data: `message_${i}`,
-            timestamp: Date.now()
-          }));
-          const response = await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, messages);
-          return response && response.Successful && response.Successful.length === 10;
-        });
-        logTest("sendBatchToQueue() with 10 messages", result);
+      try {
+        const messages = Array.from({ length: 10 }, (_, i) => ({
+          index: i,
+          data: `message_${i}`,
+          timestamp: Date.now()
+        }));
+        const response = await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, messages);
+        const isValid = response && response.Successful && response.Successful.length === 10;
+        logTest("sendBatchToQueue() [10 messages]", isValid, 
+          isValid ? "Sent 10 messages (AWS max)" : "Failed");
+      } catch (error) {
+        logTest("sendBatchToQueue() [10 messages]", false, error.message);
       }
       
-      // Test 18: sendBatchToQueue() with empty array
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, []);
-          return false;
-        });
-        logTest("sendBatchToQueue() with empty array", !result);
-      }
+      // Test 18: sendBatchToQueue() with empty array (should fail)
+      await safeTest("sendBatchToQueue() [empty array]", async () => {
+        await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, []);
+      }, true);
       
       // Test 19: sendBatchToQueue() with delay seconds
-      {
-        const result = await safeTest(async () => {
-          const messages = [
-            { delayed: "message 1" },
-            { delayed: "message 2" }
-          ];
-          const response = await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, messages, {
-            delaySeconds: 3
-          });
-          return response && response.Successful && response.Successful.length === 2;
+      try {
+        const messages = [
+          { delayed: "message 1" },
+          { delayed: "message 2" }
+        ];
+        const response = await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, messages, {
+          delaySeconds: 3
         });
-        logTest("sendBatchToQueue() with delay seconds", result);
+        const isValid = response && response.Successful && response.Successful.length === 2;
+        logTest("sendBatchToQueue() [with delay]", isValid, "Batch with 3s delay sent");
+      } catch (error) {
+        logTest("sendBatchToQueue() [with delay]", false, error.message);
       }
       
-      // Test 20: sendBatchToQueue() with invalid URL
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.sendBatchToQueue("https://invalid-queue-url.com", [{ test: "data" }]);
-          return false;
-        });
-        logTest("sendBatchToQueue() with invalid URL", !result);
-      }
+      // Test 20: sendBatchToQueue() with invalid URL (should fail)
+      await safeTest("sendBatchToQueue() [invalid URL]", async () => {
+        await SQSHelper.sendBatchToQueue("https://invalid-queue-url.com", [{ test: "data" }]);
+      }, true);
       
-      // Test 21: sendBatchToQueue() with null messages
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, null);
-          return false;
-        });
-        logTest("sendBatchToQueue() with null messages", !result);
-      }
+      // Test 21: sendBatchToQueue() with null messages (should fail)
+      await safeTest("sendBatchToQueue() [null messages]", async () => {
+        await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, null);
+      }, true);
     }
     
     
@@ -376,7 +349,7 @@ async function runSqsUnitTests() {
     } else {
       
       // Send some test messages first
-      await safeTest(async () => {
+      try {
         const messages = [
           { receive_test: 1 },
           { receive_test: 2 },
@@ -385,102 +358,91 @@ async function runSqsUnitTests() {
           { receive_test: 5 }
         ];
         await SQSHelper.sendBatchToQueue(TEST_QUEUE_URL, messages);
-      });
-      
-      // Wait for messages to be available
-      await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (error) {
+        console.log("⚠️  Failed to send test messages - some tests may fail\n");
+      }
       
       // Test 22: receiveFromQueue() with default parameters
-      {
-        const result = await safeTest(async () => {
-          const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL);
-          return Array.isArray(messages);
-        });
-        logTest("receiveFromQueue() with defaults", result);
+      try {
+        const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL);
+        const isValid = Array.isArray(messages);
+        logTest("receiveFromQueue() [defaults]", isValid, 
+          isValid ? `Received ${messages.length} message(s)` : "Failed");
+      } catch (error) {
+        logTest("receiveFromQueue() [defaults]", false, error.message);
       }
       
       // Test 23: receiveFromQueue() with maxMessages = 5
-      {
-        const result = await safeTest(async () => {
-          const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 5);
-          return Array.isArray(messages);
-        });
-        logTest("receiveFromQueue() with max 5 messages", result);
+      try {
+        const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 5);
+        const isValid = Array.isArray(messages);
+        logTest("receiveFromQueue() [max 5]", isValid, 
+          isValid ? `Received ${messages.length} message(s)` : "Failed");
+      } catch (error) {
+        logTest("receiveFromQueue() [max 5]", false, error.message);
       }
       
       // Test 24: receiveFromQueue() with maxMessages = 10
-      {
-        const result = await safeTest(async () => {
-          const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 10);
-          return Array.isArray(messages);
-        });
-        logTest("receiveFromQueue() with max 10 messages", result);
+      try {
+        const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 10);
+        const isValid = Array.isArray(messages);
+        logTest("receiveFromQueue() [max 10]", isValid, 
+          isValid ? `Received ${messages.length} message(s)` : "Failed");
+      } catch (error) {
+        logTest("receiveFromQueue() [max 10]", false, error.message);
       }
       
       // Test 25: receiveFromQueue() with short polling
-      {
-        const result = await safeTest(async () => {
-          const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 0);
-          return Array.isArray(messages);
-        });
-        logTest("receiveFromQueue() short polling (0s)", result);
+      try {
+        const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 0);
+        const isValid = Array.isArray(messages);
+        logTest("receiveFromQueue() [short poll 0s]", isValid, "Short polling");
+      } catch (error) {
+        logTest("receiveFromQueue() [short poll 0s]", false, error.message);
       }
       
       // Test 26: receiveFromQueue() with long polling
-      {
-        const result = await safeTest(async () => {
-          const startTime = Date.now();
-          const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 5);
-          const elapsed = Date.now() - startTime;
-          return Array.isArray(messages);
-        });
-        logTest("receiveFromQueue() long polling (5s)", result);
+      try {
+        const startTime = Date.now();
+        const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 5);
+        const elapsed = Date.now() - startTime;
+        const isValid = Array.isArray(messages);
+        logTest("receiveFromQueue() [long poll 5s]", isValid, 
+          isValid ? `Polling completed in ${elapsed}ms` : "Failed");
+      } catch (error) {
+        logTest("receiveFromQueue() [long poll 5s]", false, error.message);
       }
       
       // Test 27: receiveFromQueue() returns empty array when no messages
-      {
-        const result = await safeTest(async () => {
-          const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 0);
-          return Array.isArray(messages);
-        });
-        logTest("receiveFromQueue() empty queue", result);
+      try {
+        const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 0);
+        const isValid = Array.isArray(messages);
+        logTest("receiveFromQueue() [empty queue]", isValid, 
+          isValid ? "Empty array returned" : "Failed");
+      } catch (error) {
+        logTest("receiveFromQueue() [empty queue]", false, error.message);
       }
       
-      // Test 28: receiveFromQueue() with invalid URL
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.receiveFromQueue("https://invalid-queue-url.com");
-          return false;
-        });
-        logTest("receiveFromQueue() with invalid URL", !result);
-      }
+      // Test 28: receiveFromQueue() with invalid URL (should fail)
+      await safeTest("receiveFromQueue() [invalid URL]", async () => {
+        await SQSHelper.receiveFromQueue("https://invalid-queue-url.com");
+      }, true);
       
-      // Test 29: receiveFromQueue() with maxMessages = 0
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 0);
-          return false;
-        });
-        logTest("receiveFromQueue() with maxMessages=0", !result);
-      }
+      // Test 29: receiveFromQueue() with maxMessages = 0 (should fail)
+      await safeTest("receiveFromQueue() [maxMessages=0]", async () => {
+        await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 0);
+      }, true);
       
-      // Test 30: receiveFromQueue() with negative waitTime
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, -1);
-          return false;
-        });
-        logTest("receiveFromQueue() with negative waitTime", !result);
-      }
+      // Test 30: receiveFromQueue() with negative waitTime (should fail)
+      await safeTest("receiveFromQueue() [negative waitTime]", async () => {
+        await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, -1);
+      }, true);
       
-      // Test 31: receiveFromQueue() with null queue URL
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.receiveFromQueue(null);
-          return false;
-        });
-        logTest("receiveFromQueue() with null URL", !result);
-      }
+      // Test 31: receiveFromQueue() with null queue URL (should fail)
+      await safeTest("receiveFromQueue() [null URL]", async () => {
+        await SQSHelper.receiveFromQueue(null);
+      }, true);
     }
     
     
@@ -499,106 +461,85 @@ async function runSqsUnitTests() {
       
       // Send and receive a message to get a receipt handle
       let testReceiptHandle = null;
-      await safeTest(async () => {
+      try {
         await SQSHelper.sendToQueue(TEST_QUEUE_URL, { delete_test: "message" });
         await new Promise(resolve => setTimeout(resolve, 1500));
         const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 0);
         if (messages && messages.length > 0) {
           testReceiptHandle = messages[0].ReceiptHandle;
         }
-      });
+      } catch (error) {
+        console.log("⚠️  Failed to prepare test message - some tests may fail\n");
+      }
       
       // Test 32: deleteFromQueue() with valid receipt handle
-      {
-        const result = await safeTest(async () => {
-          if (!testReceiptHandle) throw new Error("No receipt handle available");
-          await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, testReceiptHandle);
-          return true;
-        });
-        logTest("deleteFromQueue() with valid receipt", result);
+      try {
+        if (!testReceiptHandle) throw new Error("No receipt handle available");
+        await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, testReceiptHandle);
+        logTest("deleteFromQueue() [valid receipt]", true, "Message deleted");
+      } catch (error) {
+        logTest("deleteFromQueue() [valid receipt]", false, error.message);
       }
       
-      // Test 33: deleteFromQueue() with null receipt handle
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, null);
-          return false;
-        });
-        logTest("deleteFromQueue() with null receipt", !result);
-      }
+      // Test 33: deleteFromQueue() with null receipt handle (should fail)
+      await safeTest("deleteFromQueue() [null receipt]", async () => {
+        await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, null);
+      }, true);
       
-      // Test 34: deleteFromQueue() with empty receipt handle
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, "");
-          return false;
-        });
-        logTest("deleteFromQueue() with empty receipt", !result);
-      }
+      // Test 34: deleteFromQueue() with empty receipt handle (should fail)
+      await safeTest("deleteFromQueue() [empty receipt]", async () => {
+        await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, "");
+      }, true);
       
-      // Test 35: deleteFromQueue() with invalid receipt handle
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, "invalid_receipt_handle_xyz");
-          return false;
-        });
-        logTest("deleteFromQueue() with invalid receipt", !result);
-      }
+      // Test 35: deleteFromQueue() with invalid receipt handle (should fail)
+      await safeTest("deleteFromQueue() [invalid receipt]", async () => {
+        await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, "invalid_receipt_handle_xyz");
+      }, true);
       
-      // Test 36: deleteFromQueue() with invalid URL
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.deleteFromQueue("https://invalid-queue-url.com", "some_receipt");
-          return false;
-        });
-        logTest("deleteFromQueue() with invalid URL", !result);
-      }
+      // Test 36: deleteFromQueue() with invalid URL (should fail)
+      await safeTest("deleteFromQueue() [invalid URL]", async () => {
+        await SQSHelper.deleteFromQueue("https://invalid-queue-url.com", "some_receipt");
+      }, true);
       
       // Test 37: deleteFromQueue() with retry options
-      {
+      try {
         // Send and receive a new message
         let receiptHandle = null;
-        await safeTest(async () => {
-          await SQSHelper.sendToQueue(TEST_QUEUE_URL, { retry_delete_test: "message" });
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 0);
-          if (messages && messages.length > 0) {
-            receiptHandle = messages[0].ReceiptHandle;
-          }
-        });
+        await SQSHelper.sendToQueue(TEST_QUEUE_URL, { retry_delete_test: "message" });
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 0);
+        if (messages && messages.length > 0) {
+          receiptHandle = messages[0].ReceiptHandle;
+        }
         
-        const result = await safeTest(async () => {
-          if (!receiptHandle) throw new Error("No receipt handle available");
-          await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, receiptHandle, {
-            retries: 2,
-            delayMs: 100
-          });
-          return true;
+        if (!receiptHandle) throw new Error("No receipt handle available");
+        await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, receiptHandle, {
+          retries: 2,
+          delayMs: 100
         });
-        logTest("deleteFromQueue() with retry options", result);
+        logTest("deleteFromQueue() [with retries]", true, "Deleted with retry options");
+      } catch (error) {
+        logTest("deleteFromQueue() [with retries]", false, error.message);
       }
       
       // Test 38: deleteFromQueue() same message twice (idempotent)
-      {
+      try {
         // Send and receive a new message
         let receiptHandle = null;
-        await safeTest(async () => {
-          await SQSHelper.sendToQueue(TEST_QUEUE_URL, { double_delete_test: "message" });
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 0);
-          if (messages && messages.length > 0) {
-            receiptHandle = messages[0].ReceiptHandle;
-          }
-        });
+        await SQSHelper.sendToQueue(TEST_QUEUE_URL, { double_delete_test: "message" });
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 0);
+        if (messages && messages.length > 0) {
+          receiptHandle = messages[0].ReceiptHandle;
+        }
         
-        const result = await safeTest(async () => {
-          if (!receiptHandle) throw new Error("No receipt handle available");
-          await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, receiptHandle);
-          // Try to delete again - should handle gracefully
-          await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, receiptHandle);
-          return true;
-        });
-        logTest("deleteFromQueue() duplicate delete", result);
+        if (!receiptHandle) throw new Error("No receipt handle available");
+        await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, receiptHandle);
+        // Try to delete again - should handle gracefully
+        await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, receiptHandle);
+        logTest("deleteFromQueue() [duplicate delete]", true, "Idempotent operation");
+      } catch (error) {
+        logTest("deleteFromQueue() [duplicate delete]", false, error.message);
       }
     }
     
@@ -624,82 +565,75 @@ async function runSqsUnitTests() {
     console.log("\n🔄 SECTION 7: RETRY MECHANISM\n");
     
     // Test 44: withRetry() succeeds on first attempt
-    {
-      const result = await safeTest(async () => {
-        let callCount = 0;
-        const testFn = async () => {
-          callCount++;
-          return "success";
-        };
-        const result = await SQSHelper.withRetry(testFn, 3, 100);
-        if (result !== "success") throw new Error("Should return success");
-        if (callCount !== 1) throw new Error("Should only call once");
-      })();
-      logTest("withRetry(immediate_success)", result.success, 
-        result.success ? "Succeeded on first attempt" : result.error.message);
+    try {
+      let callCount = 0;
+      const testFn = async () => {
+        callCount++;
+        return "success";
+      };
+      const result = await SQSHelper.withRetry(testFn, 3, 100);
+      if (result !== "success") throw new Error("Should return success");
+      if (callCount !== 1) throw new Error("Should only call once");
+      logTest("withRetry() [immediate success]", true, "Succeeded on first attempt");
+    } catch (error) {
+      logTest("withRetry() [immediate success]", false, error.message);
     }
     
     // Test 45: withRetry() succeeds after 2 failures
-    {
-      const result = await safeTest(async () => {
-        let callCount = 0;
-        const testFn = async () => {
-          callCount++;
-          if (callCount < 3) throw new Error("Simulated failure");
-          return "success";
-        };
-        const result = await SQSHelper.withRetry(testFn, 3, 50);
-        if (result !== "success") throw new Error("Should return success");
-        if (callCount !== 3) throw new Error("Should call 3 times");
-      })();
-      logTest("withRetry(retry_then_success)", result.success, 
-        result.success ? "Succeeded after 2 retries" : result.error.message);
+    try {
+      let callCount = 0;
+      const testFn = async () => {
+        callCount++;
+        if (callCount < 3) throw new Error("Simulated failure");
+        return "success";
+      };
+      const result = await SQSHelper.withRetry(testFn, 3, 50);
+      if (result !== "success") throw new Error("Should return success");
+      if (callCount !== 3) throw new Error("Should call 3 times");
+      logTest("withRetry() [retry then success]", true, "Succeeded after 2 retries");
+    } catch (error) {
+      logTest("withRetry() [retry then success]", false, error.message);
     }
     
-    // Test 46: withRetry() fails after exhausting all retries
-    {
-      const result = await safeTest(async () => {
-        let callCount = 0;
-        const testFn = async () => {
-          callCount++;
-          throw new Error("Always fails");
-        };
-        await SQSHelper.withRetry(testFn, 3, 50);
-      })();
-      logTest("withRetry(exhausted_retries)", !result.success, 
-        !result.success ? "Correctly failed after 3 retries" : "Should have failed");
-    }
+    // Test 46: withRetry() fails after exhausting all retries (should fail)
+    await safeTest("withRetry() [exhausted retries]", async () => {
+      let callCount = 0;
+      const testFn = async () => {
+        callCount++;
+        throw new Error("Always fails");
+      };
+      await SQSHelper.withRetry(testFn, 3, 50);
+    }, true);
     
     // Test 47: withRetry() with exponential backoff delay
-    {
-      const result = await safeTest(async () => {
-        let callCount = 0;
-        const delays = [];
-        let lastTime = Date.now();
-        
-        const testFn = async () => {
-          callCount++;
-          if (callCount > 1) {
-            delays.push(Date.now() - lastTime);
-          }
-          lastTime = Date.now();
-          if (callCount < 3) throw new Error("Simulated failure");
-          return "success";
-        };
-        
-        await SQSHelper.withRetry(testFn, 3, 100);
-        
-        // Verify exponential backoff: delay2 should be ~2x delay1
-        if (delays.length === 2) {
-          const ratio = delays[1] / delays[0];
-          // Allow some tolerance (1.5x to 2.5x)
-          if (ratio < 1.5 || ratio > 2.5) {
-            throw new Error(`Backoff ratio ${ratio.toFixed(2)} not exponential`);
-          }
+    try {
+      let callCount = 0;
+      const delays = [];
+      let lastTime = Date.now();
+      
+      const testFn = async () => {
+        callCount++;
+        if (callCount > 1) {
+          delays.push(Date.now() - lastTime);
         }
-      })();
-      logTest("withRetry(exponential_backoff)", result.success, 
-        result.success ? "Exponential backoff working correctly" : result.error.message);
+        lastTime = Date.now();
+        if (callCount < 3) throw new Error("Simulated failure");
+        return "success";
+      };
+      
+      await SQSHelper.withRetry(testFn, 3, 100);
+      
+      // Verify exponential backoff: delay2 should be ~2x delay1
+      if (delays.length === 2) {
+        const ratio = delays[1] / delays[0];
+        // Allow some tolerance (1.5x to 2.5x)
+        if (ratio < 1.5 || ratio > 2.5) {
+          throw new Error(`Backoff ratio ${ratio.toFixed(2)} not exponential`);
+        }
+      }
+      logTest("withRetry() [exponential backoff]", true, "Exponential backoff verified");
+    } catch (error) {
+      logTest("withRetry() [exponential backoff]", false, error.message);
     }
     
     
@@ -717,138 +651,133 @@ async function runSqsUnitTests() {
     } else {
       
       // Test 48: Send message with very long body (near 256KB limit)
-      {
-        const result = await safeTest(async () => {
-          // SQS has a 256KB limit per message
-          const largeData = "x".repeat(200000); // 200KB
-          const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, {
-            data: largeData,
-            size: largeData.length
-          });
-          return response && response.MessageId;
+      try {
+        // SQS has a 256KB limit per message
+        const largeData = "x".repeat(200000); // 200KB
+        const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, {
+          data: largeData,
+          size: largeData.length
         });
-        logTest("Edge: large message body (~200KB)", result);
+        const isValid = response && response.MessageId;
+        logTest("Edge [~200KB message]", isValid, "Large message sent");
+      } catch (error) {
+        logTest("Edge [~200KB message]", false, error.message);
       }
       
       // Test 49: Send message with special characters
-      {
-        const result = await safeTest(async () => {
-          const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, {
-            special: "Tab:\t Newline:\n Return:\r Quote:\" Backslash:\\",
-            controlChars: "\x00\x01\x02\x03\x04\x05",
-            unicode: "\u0000\u0001\u0002"
-          });
-          return response && response.MessageId;
+      try {
+        const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, {
+          special: "Tab:\t Newline:\n Return:\r Quote:\" Backslash:\\",
+          controlChars: "\x00\x01\x02\x03\x04\x05",
+          unicode: "\u0000\u0001\u0002"
         });
-        logTest("Edge: special characters", result);
+        const isValid = response && response.MessageId;
+        logTest("Edge [special chars]", isValid, "Special characters handled");
+      } catch (error) {
+        logTest("Edge [special chars]", false, error.message);
       }
       
       // Test 50: Concurrent send operations
-      {
-        const result = await safeTest(async () => {
-          const promises = Array.from({ length: 5 }, (_, i) => 
-            SQSHelper.sendToQueue(TEST_QUEUE_URL, { concurrent: i, timestamp: Date.now() })
-          );
-          const results = await Promise.all(promises);
-          return results.every(r => r && r.MessageId);
-        });
-        logTest("Edge: 5 concurrent sends", result);
+      try {
+        const promises = Array.from({ length: 5 }, (_, i) => 
+          SQSHelper.sendToQueue(TEST_QUEUE_URL, { concurrent: i, timestamp: Date.now() })
+        );
+        const results = await Promise.all(promises);
+        const isValid = results.every(r => r && r.MessageId);
+        logTest("Edge [5 concurrent sends]", isValid, 
+          isValid ? "All 5 concurrent sends succeeded" : "Some sends failed");
+      } catch (error) {
+        logTest("Edge [5 concurrent sends]", false, error.message);
       }
       
       // Test 51: Visibility timeout behavior
-      {
-        const result = await safeTest(async () => {
-          // Send a message
-          await SQSHelper.sendToQueue(TEST_QUEUE_URL, { visibility_test: "message" });
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          
-          // Receive with visibility timeout
-          const messages1 = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 0);
-          if (!messages1 || messages1.length === 0) {
-            throw new Error("No message received");
-          }
-          
-          // Clean up
-          if (messages1[0]?.ReceiptHandle) {
-            await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, messages1[0].ReceiptHandle);
-          }
-          return true;
-        });
-        logTest("Edge: visibility timeout", result);
+      try {
+        // Send a message
+        await SQSHelper.sendToQueue(TEST_QUEUE_URL, { visibility_test: "message" });
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Receive with visibility timeout
+        const messages1 = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 1, 0);
+        if (!messages1 || messages1.length === 0) {
+          throw new Error("No message received");
+        }
+        
+        // Clean up
+        if (messages1[0]?.ReceiptHandle) {
+          await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, messages1[0].ReceiptHandle);
+        }
+        logTest("Edge [visibility timeout]", true, "Visibility timeout behavior verified");
+      } catch (error) {
+        logTest("Edge [visibility timeout]", false, error.message);
       }
       
       // Test 52: Message attributes with various data types
-      {
-        const result = await safeTest(async () => {
-          const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, 
-            { test: "attributes_test" },
-            {
-              messageAttributes: {
-                StringAttr: { DataType: 'String', StringValue: 'test' },
-                NumberAttr: { DataType: 'Number', StringValue: '12345' }
-              }
+      try {
+        const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, 
+          { test: "attributes_test" },
+          {
+            messageAttributes: {
+              StringAttr: { DataType: 'String', StringValue: 'test' },
+              NumberAttr: { DataType: 'Number', StringValue: '12345' }
             }
-          );
-          return response && response.MessageId;
-        });
-        logTest("Edge: message attributes", result);
+          }
+        );
+        const isValid = response && response.MessageId;
+        logTest("Edge [message attributes]", isValid, "Attributes sent successfully");
+      } catch (error) {
+        logTest("Edge [message attributes]", false, error.message);
       }
       
-      // Test 53: Empty message body
-      {
-        const result = await safeTest(async () => {
-          await SQSHelper.sendToQueue(TEST_QUEUE_URL, "");
-          return false;
-        });
-        logTest("Edge: empty message body", !result);
-      }
+      // Test 53: Empty message body (should fail)
+      await safeTest("Edge [empty body]", async () => {
+        await SQSHelper.sendToQueue(TEST_QUEUE_URL, "");
+      }, true);
       
       // Test 54: Rapid successive operations
-      {
-        const result = await safeTest(async () => {
-          // Send 10 messages rapidly
-          for (let i = 0; i < 10; i++) {
-            await SQSHelper.sendToQueue(TEST_QUEUE_URL, { rapid: i });
+      try {
+        // Send 10 messages rapidly
+        for (let i = 0; i < 10; i++) {
+          await SQSHelper.sendToQueue(TEST_QUEUE_URL, { rapid: i });
+        }
+        
+        // Receive them back
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 10, 0);
+        
+        // Clean up
+        if (messages && messages.length > 0) {
+          for (const msg of messages) {
+            await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, msg.ReceiptHandle);
           }
-          
-          // Receive them back
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          const messages = await SQSHelper.receiveFromQueue(TEST_QUEUE_URL, 10, 0);
-          
-          // Clean up
-          if (messages && messages.length > 0) {
-            for (const msg of messages) {
-              await SQSHelper.deleteFromQueue(TEST_QUEUE_URL, msg.ReceiptHandle);
-            }
-          }
-          return true;
-        });
-        logTest("Edge: rapid operations (10 msgs)", result);
+        }
+        logTest("Edge [rapid 10 ops]", true, "Rapid operations completed");
+      } catch (error) {
+        logTest("Edge [rapid 10 ops]", false, error.message);
       }
       
       // Test 55: Complex nested structures
-      {
-        const result = await safeTest(async () => {
-          const complexMessage = {
-            arrays: [
-              [1, 2, 3],
-              ["a", "b", "c"],
-              [{ nested: true }, { nested: false }]
-            ],
-            objects: {
-              level1: {
-                level2: {
-                  level3: [1, 2, 3]
-                }
+      try {
+        const complexMessage = {
+          arrays: [
+            [1, 2, 3],
+            ["a", "b", "c"],
+            [{ nested: true }, { nested: false }]
+          ],
+          objects: {
+            level1: {
+              level2: {
+                level3: [1, 2, 3]
               }
-            },
-            mixed: [1, "string", true, null, { key: "value" }, [1, 2, 3]]
-          };
-          
-          const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, complexMessage);
-          return response && response.MessageId;
-        });
-        logTest("Edge: complex nested structure", result);
+            }
+          },
+          mixed: [1, "string", true, null, { key: "value" }, [1, 2, 3]]
+        };
+        
+        const response = await SQSHelper.sendToQueue(TEST_QUEUE_URL, complexMessage);
+        const isValid = response && response.MessageId;
+        logTest("Edge [nested structure]", isValid, "Complex structure sent");
+      } catch (error) {
+        logTest("Edge [nested structure]", false, error.message);
       }
     }
     
@@ -860,16 +789,13 @@ async function runSqsUnitTests() {
     console.log("\n🧹 CLEANUP: DELETING TEST QUEUE\n");
     
     if (TEST_QUEUE_URL) {
-      const cleanupResult = await safeTest(async () => {
+      try {
         await SQSHelper.deleteQueue(TEST_QUEUE_URL);
-        return true;
-      });
-      
-      if (cleanupResult) {
         console.log(`✅ Test queue deleted successfully: ${TEST_QUEUE_NAME}`);
-      } else {
+      } catch (error) {
         console.log(`⚠️  Failed to delete test queue: ${TEST_QUEUE_NAME}`);
         console.log(`   You may need to manually delete it from AWS console`);
+        console.log(`   Error: ${error.message}`);
       }
     } else {
       console.log("⏭️  No test queue to clean up");

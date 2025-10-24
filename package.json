@@ -6,7 +6,8 @@
   "main": "index.js",
   "scripts": {
     "test:s3": "node test/s3-test.js",
-    "test:sqs": "node test/sqs-test.js"
+    "test:sqs": "node test/sqs-test.js",
+    "test:ivs": "node test/ivs-test.js"
   },
   "dependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.913.0",
