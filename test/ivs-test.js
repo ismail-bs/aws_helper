@@ -28,15 +28,15 @@
  * ═══════════════════════════════════════════════════════════════════
  */
 
-import IVSService from "../aws/ivs.js";
-import getIvsClient from "../aws/ivsClient.js";
-import SecretsManager from "../aws/SecretsManager.js";
-import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
-import { 
+const IVSService = require("../aws/ivs.js");
+const getIvsClient = require("../aws/ivsClient.js");
+const { SecretsManager } = require("../aws/SecretsManager.js");
+const { STSClient, GetCallerIdentityCommand } = require("@aws-sdk/client-sts");
+const { 
   CreateStreamKeyCommand, 
   DeleteStreamKeyCommand
-} from "@aws-sdk/client-ivs";
-import dotenv from "dotenv";
+} = require("@aws-sdk/client-ivs");
+const dotenv = require("dotenv");
 
 dotenv.config();
 

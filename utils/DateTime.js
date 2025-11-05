@@ -1,4 +1,5 @@
-import { DateTime as LuxonDateTime } from "luxon";
+const luxon = require("luxon");
+const LuxonDateTime = luxon.DateTime;
 
 class DateTime {
   /**
@@ -562,4 +563,4 @@ class DateTime {
   }
 }
 
-export default DateTime;
+module.exports = DateTime;

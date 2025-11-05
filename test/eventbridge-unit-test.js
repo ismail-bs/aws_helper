@@ -26,9 +26,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import EventBridgeHelper from "../aws/EventBridgeHelper.js";
-import { STSHelper } from "../aws/STSHelper.js";
-import dotenv from "dotenv";
+const EventBridgeHelper = require("../aws/EventBridgeHelper.js");
+const { STSHelper } = require("../aws/STSHelper.js");
+const dotenv = require("dotenv");
 
 dotenv.config();
 

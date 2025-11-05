@@ -1,6 +1,6 @@
-import fs from "fs";
-import crypto from "crypto";
-import {
+const fs = require("fs");
+const crypto = require("crypto");
+const {
   EventBridgeClient,
   PutEventsCommand,
   PutRuleCommand,
@@ -15,8 +15,8 @@ import {
   EnableRuleCommand,
   DisableRuleCommand,
   ListTargetsByRuleCommand,
-} from "@aws-sdk/client-eventbridge";
-import dotenv from "dotenv";
+} = require("@aws-sdk/client-eventbridge");
+const dotenv = require("dotenv");
 
 dotenv.config();
 
@@ -456,4 +456,4 @@ class EventBridgeHelper {
   }
 }
 
-export default EventBridgeHelper;
+module.exports = EventBridgeHelper;

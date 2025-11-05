@@ -1,4 +1,4 @@
-export default class ErrorHandler {
+class ErrorHandler {
   // Store the error records
   static errors = [];
 
@@ -54,3 +54,4 @@ export default class ErrorHandler {
 }
 
 // Export the ErrorHandler class
+module.exports = ErrorHandler;

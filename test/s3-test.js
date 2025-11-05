@@ -1,5 +1,5 @@
-import AwsS3 from "../aws/AwsS3.js";
-import dotenv from "dotenv";
+const AwsS3 = require("../aws/AwsS3.js");
+const dotenv = require("dotenv");
 
 dotenv.config();
 

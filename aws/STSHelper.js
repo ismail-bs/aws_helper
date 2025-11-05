@@ -1,10 +1,10 @@
-import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
+const { STSClient, GetCallerIdentityCommand } = require("@aws-sdk/client-sts");
 
 /**
  * Helper to retrieve the current AWS Account ID using STS.
  * Usage: await STSHelper.getAccountId();
  */
-export class STSHelper {
+class STSHelper {
   static async getAccountId() {
     const client = new STSClient();
     const command = new GetCallerIdentityCommand({});
@@ -12,3 +12,5 @@ export class STSHelper {
     return response.Account;
   }
 }
+
+module.exports = { STSHelper };

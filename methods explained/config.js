@@ -1,0 +1,163 @@
+[
+  {
+    "template_id": "accountWelcome",
+    "defaults": {
+      "category": "account",
+      "title": "Welcome, {{userName}}!",
+      "description": "Your account was created successfully on {{createdDate}}.",
+      "type": "success",
+      "priority": 4,
+      "featured": false,
+      "pinned": false,
+      "visibility": "default",
+      "main_visual": { "icon": "user-plus", "label": "New Account" },
+      "secondary_visual": { "icon": "calendar", "label": "{{createdDate}}" },
+      "action": { "url": "/dashboard", "text": "Go to dashboard", "icon": "arrow-right" },
+      "meta": { "source": "onboarding" }
+    }
+  },
+  {
+    "template_id": "passwordChanged",
+    "defaults": {
+      "category": "security",
+      "title": "Password changed",
+      "description": "Hi {{userName}}, your password was updated at {{time}}. If this wasn’t you, please reset it.",
+      "type": "info",
+      "priority": 5,
+      "featured": false,
+      "pinned": false,
+      "visibility": "default",
+      "main_visual": { "icon": "shield-check", "label": "Security" },
+      "action": { "url": "/account/security", "text": "Review security", "icon": "shield" },
+      "meta": { "event": "password_changed" }
+    }
+  },
+  {
+    "template_id": "twoFactorEnabled",
+    "defaults": {
+      "category": "security",
+      "title": "Two-factor authentication enabled",
+      "description": "2FA is now on for {{userName}} using {{method}}.",
+      "type": "success",
+      "priority": 4,
+      "featured": false,
+      "pinned": false,
+      "visibility": "default",
+      "main_visual": { "icon": "lock", "label": "2FA" },
+      "action": { "url": "/account/security/2fa", "text": "Manage 2FA", "icon": "settings" },
+      "meta": { "method": "{{method}}" }
+    }
+  },
+  {
+    "template_id": "paymentSucceeded",
+    "defaults": {
+      "category": "billing",
+      "title": "Payment received: {{amount}}",
+      "description": "Thanks, {{userName}}! Your invoice {{invoiceId}} was paid.",
+      "type": "success",
+      "priority": 5,
+      "featured": false,
+      "pinned": false,
+      "visibility": "default",
+      "main_visual": { "icon": "credit-card", "label": "Billing" },
+      "action": { "url": "/billing/invoices/{{invoiceId}}", "text": "View invoice", "icon": "file" },
+      "meta": { "currency": "{{currency}}" }
+    }
+  },
+  {
+    "template_id": "paymentFailed",
+    "defaults": {
+      "category": "billing",
+      "title": "Payment failed",
+      "description": "We couldn’t process {{amount}} for invoice {{invoiceId}}. Reason: {{reason}}.",
+      "type": "error",
+      "priority": 5,
+      "featured": false,
+      "pinned": false,
+      "visibility": "default",
+      "main_visual": { "icon": "triangle-alert", "label": "Billing Issue" },
+      "action": { "url": "/billing/retry/{{invoiceId}}", "text": "Retry payment", "icon": "rotate-cw" },
+      "meta": { "retryable": true }
+    }
+  },
+  {
+    "template_id": "subscriptionRenewalReminder",
+    "defaults": {
+      "category": "billing",
+      "title": "Subscription renews on {{renewalDate}}",
+      "description": "Your plan will renew automatically on {{renewalDate}}.",
+      "type": "info",
+      "priority": 3,
+      "featured": true,
+      "pinned": false,
+      "visibility": "default",
+      "main_visual": { "icon": "repeat", "label": "Renewal" },
+      "action": { "url": "/billing/subscription", "text": "Manage subscription", "icon": "settings" },
+      "meta": { "daysRemaining": "{{daysRemaining}}" }
+    }
+  },
+  {
+    "template_id": "mediaApproved",
+    "defaults": {
+      "category": "media",
+      "title": "Media approved: {{mediaTitle}}",
+      "description": "Great news! “{{mediaTitle}}” passed review by {{moderator}}.",
+      "type": "success",
+      "priority": 4,
+      "featured": false,
+      "pinned": false,
+      "visibility": "default",
+      "main_visual": { "icon": "check-circle", "label": "Approved" },
+      "action": { "url": "/media/{{mediaId}}", "text": "Open media", "icon": "arrow-right" },
+      "meta": { "reviewId": "{{reviewId}}" }
+    }
+  },
+  {
+    "template_id": "mediaRejected",
+    "defaults": {
+      "category": "media",
+      "title": "Media needs changes: {{mediaTitle}}",
+      "description": "“{{mediaTitle}}” was rejected: {{reason}}.",
+      "type": "error",
+      "priority": 4,
+      "featured": false,
+      "pinned": false,
+      "visibility": "default",
+      "main_visual": { "icon": "x-circle", "label": "Rejected" },
+      "action": { "url": "/media/{{mediaId}}/feedback", "text": "See feedback", "icon": "message-circle" },
+      "meta": { "severity": "{{severity}}" }
+    }
+  },
+  {
+    "template_id": "adminAnnouncement",
+    "defaults": {
+      "category": "announcement",
+      "title": "New feature: {{featureName}}",
+      "description": "We launched {{featureName}} — {{summary}}.",
+      "type": "message",
+      "priority": 3,
+      "featured": true,
+      "pinned": false,
+      "visibility": "default",
+      "main_visual": { "icon": "megaphone", "label": "Announcement" },
+      "action": { "url": "/changelog/{{featureSlug}}", "text": "Read more", "icon": "book-open" },
+      "meta": { "segment": "all" }
+    }
+  },
+  {
+    "template_id": "systemMaintenance",
+    "defaults": {
+      "category": "status",
+      "title": "Scheduled maintenance: {{startTime}}–{{endTime}}",
+      "description": "We’ll be performing maintenance on {{startTime}}. Some services may be unavailable.",
+      "type": "info",
+      "priority": 5,
+      "featured": true,
+      "pinned": false,
+      "visibility": "default",
+      "main_visual": { "icon": "wrench", "label": "Maintenance" },
+      "action": { "url": "/status", "text": "Status page", "icon": "activity" },
+      "meta": { "window": "{{startTime}}–{{endTime}}" }
+    }
+  }
+]

@@ -1,5 +1,5 @@
 // Simple log routes configuration
-export default {
+module.exports = {
   aws_operations: {
     category: "aws_operations", 
     description: "AWS service operations",

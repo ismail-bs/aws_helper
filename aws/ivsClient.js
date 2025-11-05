@@ -1,11 +1,11 @@
 // ivsClient.js
-import { IvsClient } from "@aws-sdk/client-ivs";
-import ErrorHandler from "../utils/ErrorHandler.js";
-import Logger from "../utils/UtilityLogger.js";
+const { IvsClient } = require("@aws-sdk/client-ivs");
+const ErrorHandler = require("../utils/ErrorHandler.js");
+const Logger = require("../utils/UtilityLogger.js");
 
 let cachedClient = null;
 
-export default function getIvsClient() {
+function getIvsClient() {
   if (cachedClient) {
     return cachedClient;
   }
@@ -39,3 +39,5 @@ export default function getIvsClient() {
     throw err;
   }
 }
+
+module.exports = getIvsClient;

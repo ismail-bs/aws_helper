@@ -32,8 +32,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import SQSHelper from "../aws/sqsHelper.js";
-import dotenv from "dotenv";
+const SQSHelper = require("../aws/sqsHelper.js");
+const dotenv = require("dotenv");
 
 dotenv.config();
 

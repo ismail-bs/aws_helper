@@ -6,8 +6,8 @@
  * In production, you would use the actual ScyllaDB driver.
  */
 
-import Logger from "./utils/UtilityLogger.js";
-import ErrorHandler from "./utils/ErrorHandler.js";
+const Logger = require("./utils/UtilityLogger.js");
+const ErrorHandler = require("./utils/ErrorHandler.js");
 
 class ScyllaDb {
   /**
@@ -199,4 +199,4 @@ class ScyllaDb {
   }
 }
 
-export default ScyllaDb;
+module.exports = ScyllaDb;

@@ -1,4 +1,4 @@
-import {
+const {
   CreateChannelCommand,
   CreateStreamKeyCommand,
   DeleteStreamKeyCommand,
@@ -6,19 +6,18 @@ import {
   DeleteChannelCommand,
   ListChannelsCommand,
   GetChannelCommand,
-} from "@aws-sdk/client-ivs";
-
-import crypto from "crypto";
-import getIvsClient from "./ivsClient.js";
-import SafeUtils from "../utils/SafeUtils.js";
-import ErrorHandler from "../utils/ErrorHandler.js";
-import Logger from "../utils/UtilityLogger.js";
-import ScyllaDb from "../ScyllaDb.js";
+} = require("@aws-sdk/client-ivs");
+const crypto = require("crypto");
+const getIvsClient = require("./ivsClient.js");
+const SafeUtils = require("../utils/SafeUtils.js");
+const ErrorHandler = require("../utils/ErrorHandler.js");
+const Logger = require("../utils/UtilityLogger.js");
+const ScyllaDb = require("../ScyllaDb.js");
 
 const STREAMS_TABLE = "IVSStreams";
 const CHANNELS_TABLE = "IVSChannels";
 
-export default class IVSService {
+class IVSService {
   static async createStream(rawArgs) {
     try {
       const params = SafeUtils.sanitizeValidate({
@@ -362,3 +361,5 @@ export default class IVSService {
     }
   }
 }
+
+module.exports = IVSService;

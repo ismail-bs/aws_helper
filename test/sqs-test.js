@@ -1,13 +1,13 @@
-import SQSHelper from "../aws/sqsHelper.js";
-import SecretsManager from "../aws/SecretsManager.js";
-import AwsS3 from "../aws/AwsS3.js";
-import { CreateQueueCommand, DeleteQueueCommand } from "@aws-sdk/client-sqs";
-import { LambdaClient, CreateFunctionCommand, DeleteFunctionCommand, CreateEventSourceMappingCommand, DeleteEventSourceMappingCommand } from "@aws-sdk/client-lambda";
-import { IAMClient, CreateRoleCommand, AttachRolePolicyCommand, DeleteRoleCommand, DetachRolePolicyCommand } from "@aws-sdk/client-iam";
-import { CloudWatchLogsClient, DescribeLogStreamsCommand, GetLogEventsCommand } from "@aws-sdk/client-cloudwatch-logs";
-import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
-import AdmZip from "adm-zip";
-import dotenv from "dotenv";
+const SQSHelper = require("../aws/sqsHelper.js");
+const { SecretsManager } = require("../aws/SecretsManager.js");
+const AwsS3 = require("../aws/AwsS3.js");
+const { CreateQueueCommand, DeleteQueueCommand } = require("@aws-sdk/client-sqs");
+const { LambdaClient, CreateFunctionCommand, DeleteFunctionCommand, CreateEventSourceMappingCommand, DeleteEventSourceMappingCommand } = require("@aws-sdk/client-lambda");
+const { IAMClient, CreateRoleCommand, AttachRolePolicyCommand, DeleteRoleCommand, DetachRolePolicyCommand } = require("@aws-sdk/client-iam");
+const { CloudWatchLogsClient, DescribeLogStreamsCommand, GetLogEventsCommand } = require("@aws-sdk/client-cloudwatch-logs");
+const { STSClient, GetCallerIdentityCommand } = require("@aws-sdk/client-sts");
+const AdmZip = require("adm-zip");
+const dotenv = require("dotenv");
 
 dotenv.config();
 

@@ -29,7 +29,7 @@
  * ═══════════════════════════════════════════════════════════════════
  */
 
-import {
+const {
   EventBridgeClient,
   CreateEventBusCommand,
   PutRuleCommand,
@@ -44,17 +44,17 @@ import {
   DeleteRuleCommand,
   DeleteEventBusCommand,
   DescribeEventBusCommand
-} from "@aws-sdk/client-eventbridge";
-import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
-import { 
+} = require("@aws-sdk/client-eventbridge");
+const { STSClient, GetCallerIdentityCommand } = require("@aws-sdk/client-sts");
+const { 
   SQSClient, 
   CreateQueueCommand, 
   GetQueueAttributesCommand, 
   SetQueueAttributesCommand,
   DeleteQueueCommand 
-} from "@aws-sdk/client-sqs";
-import SecretsManager from "../aws/SecretsManager.js";
-import dotenv from "dotenv";
+} = require("@aws-sdk/client-sqs");
+const { SecretsManager } = require("../aws/SecretsManager.js");
+const dotenv = require("dotenv");
 
 dotenv.config();
 

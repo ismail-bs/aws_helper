@@ -1,5 +1,6 @@
-import fs from "fs";
-import {
+// aws/sqsHelper.js - SQS Helper using CommonJS
+const fs = require("fs");
+const {
   SQSClient,
   CreateQueueCommand,
   DeleteQueueCommand,
@@ -8,17 +9,18 @@ import {
   SendMessageBatchCommand,
   ReceiveMessageCommand,
   DeleteMessageCommand,
-} from "@aws-sdk/client-sqs";
-import SecretsManager from "./SecretsManager.js";
-import { SafeUtils, ErrorHandler, Logger, DateTime } from "../utils/index.js";
-import path from "path";
-import { fileURLToPath } from "url";
-import dotenv from "dotenv";
+} = require("@aws-sdk/client-sqs");
+const { SecretsManager } = require("./SecretsManager.js");
+const SafeUtils = require("../utils/SafeUtils.js");
+const ErrorHandler = require("../utils/ErrorHandler.js");
+const Logger = require("../utils/UtilityLogger.js");
+const DateTime = require("../utils/DateTime.js");
+const path = require("path");
+const dotenv = require("dotenv");
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// __dirname is available in CommonJS automatically
 
 class SQSHelper {
   // Configuration Constants
@@ -691,4 +693,4 @@ class SQSHelper {
   }
 }
 
-export default SQSHelper;
+module.exports = SQSHelper;

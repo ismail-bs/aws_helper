@@ -1,6 +1,9 @@
-import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
-import { SafeUtils, ErrorHandler, Logger, DateTime } from "../utils/index.js";
-import dotenv from "dotenv";
+const { SecretsManagerClient, GetSecretValueCommand } = require("@aws-sdk/client-secrets-manager");
+const SafeUtils = require("../utils/SafeUtils.js");
+const ErrorHandler = require("../utils/ErrorHandler.js");
+const Logger = require("../utils/UtilityLogger.js");
+const DateTime = require("../utils/DateTime.js");
+const dotenv = require("dotenv");
 
 dotenv.config();
 
@@ -254,4 +257,4 @@ class SecretsManager {
   }
 }
 
-export default SecretsManager;
+module.exports = { SecretsManager };

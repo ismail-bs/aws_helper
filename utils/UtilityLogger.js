@@ -1,10 +1,10 @@
 // logger.mjs
-import fs from "fs";
-import path from "path";
-import moment from "moment";
-import dotenv from "dotenv";
-import logConfig from "../configs/LogRoutes.js";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+const fs = require("fs");
+const path = require("path");
+const moment = require("moment");
+const dotenv = require("dotenv");
+const logConfig = require("../configs/LogRoutes.js");
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 
 dotenv.config(); // Load environment variables
 
@@ -193,4 +193,4 @@ class Logger {
   }
 }
 
-export default Logger;
+module.exports = Logger;

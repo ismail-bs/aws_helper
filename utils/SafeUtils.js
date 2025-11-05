@@ -1,4 +1,13 @@
-export default class SafeUtils {
+class SafeUtils {
+  /**
+   * Check whether a value should be considered "present".
+   * Mirrors behaviour of PHP::has_value():
+   *   • null / undefined      → false
+   *   • empty / whitespace "" → false
+   *   • NaN                   → false
+   *   • []                    → false
+   *   • {}                    → false
+   *   • everything else       → trueault class SafeUtils {
   /**
    * Check whether a value should be considered “present”.
    * Mirrors behaviour of PHP::has_value():
@@ -671,3 +680,5 @@ export default class SafeUtils {
     return document.body.innerHTML;
   }
 }
+
+module.exports = SafeUtils;

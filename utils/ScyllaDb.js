@@ -1,14 +1,14 @@
-import crypto from 'crypto';
-import http from 'http';
-import https from 'https';
-import { promises as fs } from 'fs';
-import { pathToFileURL } from 'url';
+const crypto = require('crypto');
+const http = require('http');
+const https = require('https');
+const fs = require('fs').promises;
+const { pathToFileURL } = require('url');
 
 /**
  * ScyllaDb - Node.js client for ScyllaDB with Alternator endpoint
  * Provides DynamoDB-compatible operations with high performance
  */
-export default class ScyllaDb {
+class ScyllaDb {
   /* ---------- configurable defaults ---------- */
   static DEFAULT_RETRIES = 3;
   static INITIAL_BACKOFF_MS = 100;
@@ -313,6 +313,17 @@ export default class ScyllaDb {
   }
 
   /**
+   * Set table configs directly (for testing or programmatic setup)
+   */
+  static setTableConfigs(configs) {
+    if (!configs || typeof configs !== 'object' || Array.isArray(configs)) {
+      throw new TypeError('setTableConfigs: configs must be an object (tableName → config)');
+    }
+    ScyllaDb.#tableConfigs = { ...ScyllaDb.#tableConfigs, ...configs };
+    console.log('Table configs set', { count: Object.keys(configs).length });
+  }
+
+  /**
    * Get schema from loaded config
    */
   static getSchemaFromConfig(table) {
@@ -340,8 +351,8 @@ export default class ScyllaDb {
 
     const cfg = ScyllaDb.getSchemaFromConfig(table);
 
-    const required = [cfg.PK];
-    if (cfg.SK) required.push(cfg.SK);
+    const required = [cfg.keys?.partition || cfg.PK];
+    if (cfg.keys?.sort || cfg.SK) required.push(cfg.keys?.sort || cfg.SK);
 
     const missing = required.filter(
       attr => !(attr in key) || key[attr] === null || key[attr] === ''
@@ -367,7 +378,9 @@ export default class ScyllaDb {
     }
 
     const cfg = ScyllaDb.getSchemaFromConfig(table);
-    const key = { [cfg.PK]: item[cfg.PK], ...(cfg.SK ? { [cfg.SK]: item[cfg.SK] } : {}) };
+    const pkName = cfg.keys?.partition || cfg.PK;
+    const skName = cfg.keys?.sort || cfg.SK;
+    const key = { [pkName]: item[pkName], ...(skName ? { [skName]: item[skName] } : {}) };
     ScyllaDb.validateKeys(table, key);
 
     const payload = {
@@ -502,8 +515,10 @@ export default class ScyllaDb {
     }
 
     const cfg = ScyllaDb.getSchemaFromConfig(table);
+    const pkName = cfg.keys?.partition || cfg.PK;
+    const skName = cfg.keys?.sort || cfg.SK;
     for (const it of items) {
-      const key = { [cfg.PK]: it[cfg.PK], ...(cfg.SK ? { [cfg.SK]: it[cfg.SK] } : {}) };
+      const key = { [pkName]: it[pkName], ...(skName ? { [skName]: it[skName] } : {}) };
       ScyllaDb.validateKeys(table, key);
     }
 
@@ -994,3 +1009,4 @@ export default class ScyllaDb {
     return crypto.createHash('md5').update(json).digest('hex');
   }
 } 
+module.exports = ScyllaDb;

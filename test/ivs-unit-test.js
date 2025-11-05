@@ -33,9 +33,9 @@
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-import IVSService from "../aws/ivs.js";
-import { STSHelper } from "../aws/STSHelper.js";
-import dotenv from "dotenv";
+const IVSService = require("../aws/ivs.js");
+const { STSHelper } = require("../aws/STSHelper.js");
+const dotenv = require("dotenv");
 
 dotenv.config();
 
