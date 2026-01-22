@@ -7,6 +7,7 @@
     "test:s3": "node test/s3-test.js",
     "test:sqs": "node test/sqs-test.js",
     "test:ivs": "node test/ivs-test.js",
+    "test:ivs:dual": "node test/ivs-dual-stream-test.js",
     "setup:scylla": "./scripts/setup-scylla.sh",
     "setup:database": "node scripts/setup-database.js",
     "test:notifications": "node test/notifications-test.js",

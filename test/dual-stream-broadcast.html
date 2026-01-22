@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎥 AWS IVS Dual Stream - Broadcast & Watch</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet" />
+
+    <!-- AWS IVS Web Broadcast SDK (Latest Version) -->
+    <script src="https://web-broadcast.live-video.net/1.31.0/amazon-ivs-web-broadcast.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e22ce 100%);
+            color: white;
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 25px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 16px;
+            backdrop-filter: blur(15px);
+        }
+
+        h1 {
+            font-size: 2.2em;
+            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #ec4899 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            opacity: 0.9;
+            margin-top: 8px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 600;
+            margin: 0 4px;
+        }
+
+        .badge-broadcast {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        .badge-public {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .badge-private {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .section {
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .section-header {
+            padding: 12px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .section-header.broadcast {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.3));
+        }
+
+        .section-header.public {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.3));
+        }
+
+        .section-header.private {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(217, 119, 6, 0.3));
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.2em;
+            font-weight: 700;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .status-indicator .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-live {
+            background: rgba(239, 68, 68, 0.3);
+            border: 1px solid #ef4444;
+        }
+
+        .status-live .dot {
+            background: #ff0000;
+            box-shadow: 0 0 10px #ff0000;
+        }
+
+        .status-offline {
+            background: rgba(107, 114, 128, 0.3);
+            border: 1px solid #6b7280;
+        }
+
+        .status-offline .dot {
+            background: #6b7280;
+        }
+
+        .status-ready {
+            background: rgba(34, 197, 94, 0.3);
+            border: 1px solid #22c55e;
+        }
+
+        .status-ready .dot {
+            background: #22c55e;
+        }
+
+        .status-locked {
+            background: rgba(236, 72, 153, 0.3);
+            border: 1px solid #ec4899;
+        }
+
+        .status-locked .dot {
+            background: #ec4899;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .video-container {
+            position: relative;
+            background: #000;
+        }
+
+        /* Canvas for broadcast preview */
+        #broadcast-canvas {
+            width: 100%;
+            height: 280px;
+            background: #111;
+        }
+
+        .video-js {
+            width: 100%;
+            height: 280px;
+        }
+
+        .controls-panel {
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .input-group {
+            margin-bottom: 10px;
+        }
+
+        .input-label {
+            display: block;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-bottom: 4px;
+            opacity: 0.85;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #60a5fa;
+        }
+
+        .btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-broadcast {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #6b7280, #4b5563);
+            color: white;
+        }
+
+        .btn-load {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+        }
+
+        .btn-unlock {
+            background: linear-gradient(135deg, #ec4899, #d946ef);
+            color: white;
+        }
+
+        .btn-full {
+            width: 100%;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .btn-row .btn {
+            flex: 1;
+        }
+
+        .lock-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+        }
+
+        .lock-icon {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .lock-message {
+            font-size: 1.2em;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .lock-description {
+            font-size: 0.9em;
+            opacity: 0.8;
+            margin-bottom: 15px;
+        }
+
+        .access-form {
+            width: 100%;
+            max-width: 250px;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 1000px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .log-panel {
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 15px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+
+        .log-entry {
+            padding: 3px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .log-success {
+            color: #22c55e;
+        }
+
+        .log-error {
+            color: #ef4444;
+        }
+
+        .log-info {
+            color: #60a5fa;
+        }
+
+        .instructions {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px;
+            border-radius: 12px;
+            margin-top: 20px;
+            font-size: 0.9em;
+        }
+
+        .instructions h3 {
+            margin-bottom: 10px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+            line-height: 1.7;
+        }
+
+        .instructions code {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>🎥 AWS IVS Dual Stream</h1>
+            <p class="subtitle">
+                <span class="badge badge-broadcast">📡 Broadcast</span>
+                <span class="badge badge-public">🌍 Public</span>
+                <span class="badge badge-private">🔐 Private</span>
+                - No OBS Required!
+            </p>
+        </header>
+
+        <!-- BROADCAST SECTION -->
+        <div class="section">
+            <div class="section-header broadcast">
+                <div class="section-title">📡 Broadcast Studio</div>
+                <div class="status-indicator status-offline" id="broadcast-status">
+                    <span class="dot"></span>
+                    <span id="broadcast-status-text">Not Broadcasting</span>
+                </div>
+            </div>
+            <div class="video-container">
+                <canvas id="broadcast-canvas"></canvas>
+            </div>
+            <div class="controls-panel">
+                <div class="input-group">
+                    <label class="input-label">Ingest Endpoint (from terminal)</label>
+                    <input type="text" id="ingest-endpoint" class="form-input"
+                        placeholder="e.g., a1b2c3d4e5f6.global-contribute.live-video.net">
+                </div>
+                <div class="input-group">
+                    <label class="input-label">Stream Key (from terminal)</label>
+                    <input type="text" id="stream-key" class="form-input"
+                        placeholder="sk_us-east-1_xxxxxxxxxx_xxxxxxxx">
+                </div>
+                <div class="btn-row">
+                    <button class="btn btn-load" id="camera-btn" onclick="startCamera()">📷 Start Camera</button>
+                    <button class="btn btn-broadcast" id="broadcast-btn" onclick="toggleBroadcast()" disabled>
+                        🔴 Start Broadcast
+                    </button>
+                </div>
+                <div class="log-panel" id="log-panel">
+                    <div class="log-entry log-info">Ready. Click "Start Camera" to begin.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PLAYBACK SECTIONS -->
+        <div class="main-grid">
+            <!-- PUBLIC -->
+            <div class="section">
+                <div class="section-header public">
+                    <div class="section-title">🌍 Public Stream</div>
+                    <div class="status-indicator status-offline" id="public-status">
+                        <span class="dot"></span>
+                        <span id="public-status-text">Waiting</span>
+                    </div>
+                </div>
+                <div class="video-container">
+                    <video id="public-player" class="video-js vjs-big-play-centered" controls></video>
+                </div>
+                <div class="controls-panel">
+                    <div class="input-group">
+                        <label class="input-label">Public Playback URL</label>
+                        <input type="text" id="public-url" class="form-input"
+                            placeholder="https://xxx.playback.live-video.net/api/video/v1/xxx.m3u8">
+                    </div>
+                    <button class="btn btn-load btn-full" onclick="loadPublicStream()">🎬 Load Stream</button>
+                </div>
+            </div>
+
+            <!-- PRIVATE -->
+            <div class="section">
+                <div class="section-header private">
+                    <div class="section-title">🔐 Private Stream</div>
+                    <div class="status-indicator status-locked" id="private-status">
+                        <span class="dot"></span>
+                        <span id="private-status-text">Locked</span>
+                    </div>
+                </div>
+                <div class="video-container">
+                    <video id="private-player" class="video-js vjs-big-play-centered" controls></video>
+                    <div class="lock-overlay" id="lock-overlay">
+                        <div class="lock-icon">🔒</div>
+                        <div class="lock-message">Private Stream</div>
+                        <div class="lock-description">Enter access code to unlock</div>
+                        <form class="access-form" onsubmit="unlockStream(event)">
+                            <div class="input-group">
+                                <input type="password" id="access-code" class="form-input" placeholder="Access Code"
+                                    required>
+                            </div>
+                            <button type="submit" class="btn btn-unlock btn-full">🔓 Unlock</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="controls-panel">
+                    <div class="input-group">
+                        <label class="input-label">Private Playback URL</label>
+                        <input type="text" id="private-url" class="form-input"
+                            placeholder="https://xxx.playback.live-video.net/api/video/v1/xxx.m3u8" disabled>
+                    </div>
+                    <button class="btn btn-load btn-full" id="private-load-btn" onclick="loadPrivateStream()" disabled>
+                        🎬 Load Stream
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- INSTRUCTIONS -->
+        <div class="instructions">
+            <h3>📝 Quick Start (No OBS Needed!)</h3>
+            <ol>
+                <li>Run: <code>npm run test:ivs:dual</code> in terminal</li>
+                <li>Copy <strong>Ingest Endpoint</strong> and <strong>Stream Key</strong> from output</li>
+                <li>Click <strong>"Start Camera"</strong> - allow browser access</li>
+                <li>Paste credentials and click <strong>"Start Broadcast"</strong></li>
+                <li>Copy <strong>Playback URLs</strong> and load streams below</li>
+                <li>Private stream code: <code>INVITE2024</code></li>
+            </ol>
+        </div>
+    </div>
+
+    <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
+    <script>
+        // ============================================================
+        // GLOBALS
+        // ============================================================
+        let broadcastClient = null;
+        let isBroadcasting = false;
+        let publicPlayer = null;
+        let privatePlayer = null;
+        let isPrivateUnlocked = false;
+        const VALID_CODES = ['INVITE2024', 'VIP2024', 'PREMIUM'];
+
+        // ============================================================
+        // LOGGING
+        // ============================================================
+        function log(message, type = 'info') {
+            const panel = document.getElementById('log-panel');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            panel.appendChild(entry);
+            panel.scrollTop = panel.scrollHeight;
+            console.log(`[${type.toUpperCase()}]`, message);
+        }
+
+        // ============================================================
+        // INITIALIZE PLAYERS
+        // ============================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            // Check if IVS SDK loaded
+            if (typeof IVSBroadcastClient !== 'undefined') {
+                log('AWS IVS Web Broadcast SDK loaded (v1.31.0)', 'success');
+            } else {
+                log('ERROR: AWS IVS SDK not loaded!', 'error');
+            }
+
+            // Initialize video.js players
+            publicPlayer = videojs('public-player', {
+                controls: true,
+                autoplay: false,
+                liveui: true,
+                html5: { vhs: { overrideNative: true } }
+            });
+
+            privatePlayer = videojs('private-player', {
+                controls: true,
+                autoplay: false,
+                liveui: true,
+                html5: { vhs: { overrideNative: true } }
+            });
+
+            // Player events
+            publicPlayer.on('playing', () => updateStatus('public', '🔴 LIVE', 'live'));
+            publicPlayer.on('error', () => updateStatus('public', 'Error', 'offline'));
+            privatePlayer.on('playing', () => updateStatus('private', '🔴 LIVE', 'live'));
+            privatePlayer.on('error', () => updateStatus('private', 'Error', 'offline'));
+
+            log('Video players initialized', 'success');
+        });
+
+        // ============================================================
+        // CAMERA & BROADCAST
+        // ============================================================
+        async function startCamera() {
+            try {
+                log('Requesting camera access...');
+
+                // Request permissions
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 1280, height: 720 },
+                    audio: true
+                });
+
+                log('Camera access granted!', 'success');
+
+                // Create broadcast client
+                const ingestEndpoint = document.getElementById('ingest-endpoint').value.trim();
+
+                broadcastClient = IVSBroadcastClient.create({
+                    streamConfig: IVSBroadcastClient.STANDARD_LANDSCAPE,
+                    ingestEndpoint: ingestEndpoint || undefined
+                });
+
+                // Attach preview to canvas
+                const canvas = document.getElementById('broadcast-canvas');
+                broadcastClient.attachPreview(canvas);
+
+                // Add camera
+                const videoTrack = stream.getVideoTracks()[0];
+                const audioTrack = stream.getAudioTracks()[0];
+
+                if (videoTrack) {
+                    await broadcastClient.addVideoInputDevice(stream, 'camera1', { index: 0 });
+                    log('Camera added to broadcast', 'success');
+                }
+
+                if (audioTrack) {
+                    await broadcastClient.addAudioInputDevice(stream, 'mic1');
+                    log('Microphone added to broadcast', 'success');
+                }
+
+                // Enable broadcast button
+                document.getElementById('broadcast-btn').disabled = false;
+                document.getElementById('camera-btn').textContent = '✅ Camera Ready';
+                updateStatus('broadcast', 'Camera Ready', 'ready');
+
+            } catch (error) {
+                log(`Camera error: ${error.message}`, 'error');
+                alert('Failed to access camera. Please allow camera/microphone permission.');
+            }
+        }
+
+        async function toggleBroadcast() {
+            if (isBroadcasting) {
+                stopBroadcast();
+            } else {
+                startBroadcast();
+            }
+        }
+
+        async function startBroadcast() {
+            const streamKey = document.getElementById('stream-key').value.trim();
+            const ingestEndpoint = document.getElementById('ingest-endpoint').value.trim();
+
+            if (!streamKey) {
+                log('Error: Stream Key is required', 'error');
+                alert('Please enter Stream Key');
+                return;
+            }
+
+            if (!ingestEndpoint) {
+                log('Error: Ingest Endpoint is required', 'error');
+                alert('Please enter Ingest Endpoint');
+                return;
+            }
+
+            if (!broadcastClient) {
+                log('Error: Camera not started', 'error');
+                alert('Please start camera first');
+                return;
+            }
+
+            try {
+                log('Starting broadcast...');
+
+                // Format ingest endpoint if needed
+                let endpoint = ingestEndpoint;
+                if (!endpoint.startsWith('rtmps://') && !endpoint.includes('://')) {
+                    endpoint = `rtmps://${endpoint}:443/app/`;
+                }
+
+                await broadcastClient.startBroadcast(streamKey, endpoint);
+
+                isBroadcasting = true;
+                document.getElementById('broadcast-btn').textContent = '⏹️ Stop Broadcast';
+                document.getElementById('broadcast-btn').classList.remove('btn-broadcast');
+                document.getElementById('broadcast-btn').classList.add('btn-stop');
+
+                updateStatus('broadcast', '🔴 LIVE', 'live');
+                log('🔴 BROADCASTING LIVE!', 'success');
+
+            } catch (error) {
+                log(`Broadcast failed: ${error.message}`, 'error');
+                alert(`Failed to start broadcast: ${error.message}`);
+            }
+        }
+
+        function stopBroadcast() {
+            if (broadcastClient) {
+                broadcastClient.stopBroadcast();
+            }
+
+            isBroadcasting = false;
+            document.getElementById('broadcast-btn').textContent = '🔴 Start Broadcast';
+            document.getElementById('broadcast-btn').classList.add('btn-broadcast');
+            document.getElementById('broadcast-btn').classList.remove('btn-stop');
+
+            updateStatus('broadcast', 'Stopped', 'offline');
+            log('Broadcast stopped', 'info');
+        }
+
+        // ============================================================
+        // PLAYBACK
+        // ============================================================
+        function loadPublicStream() {
+            const url = document.getElementById('public-url').value.trim();
+            if (!url) {
+                alert('Please enter Public Playback URL');
+                return;
+            }
+
+            log(`Loading public stream: ${url.substring(0, 50)}...`);
+            publicPlayer.src({ src: url, type: 'application/x-mpegURL' });
+            publicPlayer.load();
+            publicPlayer.play().catch(() => { });
+            updateStatus('public', 'Loading...', 'ready');
+        }
+
+        function loadPrivateStream() {
+            if (!isPrivateUnlocked) {
+                alert('Please unlock the stream first');
+                return;
+            }
+
+            const url = document.getElementById('private-url').value.trim();
+            if (!url) {
+                alert('Please enter Private Playback URL');
+                return;
+            }
+
+            log(`Loading private stream: ${url.substring(0, 50)}...`);
+            privatePlayer.src({ src: url, type: 'application/x-mpegURL' });
+            privatePlayer.load();
+            privatePlayer.play().catch(() => { });
+            updateStatus('private', 'Loading...', 'ready');
+        }
+
+        function unlockStream(event) {
+            event.preventDefault();
+            const code = document.getElementById('access-code').value.trim();
+
+            if (VALID_CODES.includes(code)) {
+                document.getElementById('lock-overlay').style.display = 'none';
+                document.getElementById('private-url').disabled = false;
+                document.getElementById('private-load-btn').disabled = false;
+                isPrivateUnlocked = true;
+                updateStatus('private', 'Unlocked', 'ready');
+                log('Private stream unlocked!', 'success');
+            } else {
+                alert('Invalid access code');
+                document.getElementById('access-code').value = '';
+            }
+        }
+
+        // ============================================================
+        // UI HELPERS
+        // ============================================================
+        function updateStatus(stream, text, status) {
+            const indicator = document.getElementById(`${stream}-status`);
+            const textEl = document.getElementById(`${stream}-status-text`);
+
+            indicator.className = `status-indicator status-${status}`;
+            textEl.textContent = text;
+        }
+    </script>
+</body>
+
+</html>
