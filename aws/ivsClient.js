@@ -12,7 +12,7 @@ function getIvsClient() {
 
   try {
     cachedClient = new IvsClient({
-      region: process.env.AWS_REGION || "us-west-2",
+      region: process.env.AWS_REGION || "us-east-1",
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID_IVS,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY_IVS,
@@ -22,7 +22,7 @@ function getIvsClient() {
     Logger.writeLog({
       flag: "IVS_CLIENT_INIT",
       action: "initClient",
-      data: { region: process.env.AWS_REGION || "us-west-2" },
+      data: { region: process.env.AWS_REGION || "us-east-1" },
       message: "Initialized IVS client",
     }); // :contentReference[oaicite:0]{index=0}
 
