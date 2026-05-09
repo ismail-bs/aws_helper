@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Global dark-theme base ────────────────────────────────────────────── */
+
+@layer base {
+  /* Ensure every native form element is readable on dark backgrounds.
+     Must be in @layer base to take priority over Tailwind preflight resets. */
+  input, select, textarea {
+    color: #f1f5f9 !important;        /* slate-100 */
+    background-color: rgb(15 23 42 / 0.85) !important;
+  }
+  input::placeholder, textarea::placeholder { color: #64748b !important; }
+  /* Checkbox / radio should not get dark bg */
+  input[type="checkbox"], input[type="radio"] {
+    background-color: transparent !important;
+  }
+  /* Select option text must be readable in the dropdown */
+  option { color: #f1f5f9; background: #0f172a; }
+}
+
+/* ── Shared form + button tokens ─────────────────────────────────────── */
+
+.form-input {
+  width: 100%;
+  background: rgb(15 23 42 / 0.85);
+  border: 1px solid rgb(51 65 85);   /* slate-700 */
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.875rem;
+  color: #f1f5f9;
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms;
+}
+.form-input:focus {
+  border-color: #a78bfa;             /* violet-400 */
+  box-shadow: 0 0 0 1px #a78bfa;
+}
+.form-input::placeholder { color: #475569; }  /* slate-600 */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.5rem;
+  transition: all 150ms;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary  { background: linear-gradient(135deg, #7c3aed, #6366f1); color: #fff; }
+.btn-primary:hover:not(:disabled)  { opacity: 0.9; }
+.btn-success  { background: #10b981; color: #fff; }
+.btn-success:hover:not(:disabled)  { background: #059669; }
+.btn-danger   { background: #ef4444; color: #fff; }
+.btn-danger:hover:not(:disabled)   { background: #dc2626; }
+.btn-warning  { background: #f59e0b; color: #1e1b4b; }
+.btn-warning:hover:not(:disabled)  { background: #d97706; }
+.btn-ghost    { border-color: rgb(51 65 85); color: #cbd5e1; background: transparent; }
+.btn-ghost:hover:not(:disabled)    { background: rgb(30 41 59 / 0.6); color: #f1f5f9; }
+
+/* ── Video.js dark theme ──────────────────────────────────────────────── */
+.video-js {
+  background: #020617 !important;
+  border-radius: 0;
+  overflow: hidden;
+  /* When placed inside our absolute-inset-0 wrapper, fill it completely. */
+  width: 100% !important;
+  height: 100% !important;
+}
+.video-js .vjs-tech {
+  width: 100% !important;
+  height: 100% !important;
+}
+/* Remove video.js's own border-radius that clips play button */
+.vjs-big-play-button {
+  border-radius: 50% !important;
+  width: 3rem !important;
+  height: 3rem !important;
+  line-height: 3rem !important;
+  margin-top: -1.5rem !important;
+  margin-left: -1.5rem !important;
+}
+
+/* ── Animations ───────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }

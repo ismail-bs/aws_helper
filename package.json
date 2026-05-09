@@ -12,25 +12,40 @@
     "setup:database": "node scripts/setup-database.js",
     "test:notifications": "node test/notifications-test.js",
     "reset:database": "node scripts/setup-database.js reset",
-    "cleanup:test-data": "node scripts/cleanup-test-data.js"
+    "cleanup:test-data": "node scripts/cleanup-test-data.js",
+    "db:setup:ivs": "node server/scripts/setup-dynamo.js",
+    "server": "node server/index.js",
+    "server:dev": "node --watch server/index.js",
+    "web": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
+    "web:install": "npm --prefix web install",
+    "dev": "node scripts/dev.js"
   },
   "dependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.913.0",
+    "@aws-sdk/client-dynamodb": "^3.913.0",
     "@aws-sdk/client-eventbridge": "^3.913.0",
     "@aws-sdk/client-iam": "^3.913.0",
     "@aws-sdk/client-ivs": "^3.911.0",
+    "@aws-sdk/client-ivs-realtime": "^3.913.0",
     "@aws-sdk/client-lambda": "^3.913.0",
     "@aws-sdk/client-s3": "^3.911.0",
     "@aws-sdk/client-secrets-manager": "^3.911.0",
+    "@aws-sdk/client-sns": "^3.913.0",
     "@aws-sdk/client-sqs": "^3.911.0",
     "@aws-sdk/client-sts": "^3.913.0",
     "@aws-sdk/credential-providers": "^3.911.0",
+    "@aws-sdk/lib-dynamodb": "^3.913.0",
     "@aws-sdk/s3-request-presigner": "^3.911.0",
     "adm-zip": "^0.5.16",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.3",
+    "express": "^4.21.2",
     "install": "^0.13.0",
     "luxon": "^3.7.2",
-    "moment": "^2.30.1"
+    "moment": "^2.30.1",
+    "morgan": "^1.10.0",
+    "nanoid": "^5.0.7"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }
